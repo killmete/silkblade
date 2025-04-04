@@ -1,0 +1,95 @@
+{
+"name": "h",
+"level": 1,
+"exp": 0,
+"mp": 65,
+"maxMP": 20,
+"attack": 12,
+"critRate": 0.1,
+"defense": 10,
+"maxHP": 20,
+"currentHP": 115,
+"unlockedSkills": [
+	true,
+	true,
+	true,
+	true,
+	true,
+	true,
+	false
+],
+"currentSkill": "BASIC",
+"currentStage": 1,
+"gold": 0,
+"inventory": {
+	"equippedItems": [
+		{
+			"id": "TIER_LEGENDARY_WEAPON"
+		},
+		{
+			"id": "TIER_LEGENDARY_ARMOR"
+		},
+		{
+			"id": "TIER_HEROIC_ACCESSORY"
+		}
+	],
+	"inventoryItems": [
+		{
+			"id": "TIER_HEROIC_WEAPON"
+		},
+		{
+			"id": "TIER_RARE_WEAPON"
+		},
+		{
+			"id": "WEAPON_REAL_KNIFE"
+		},
+		{
+			"id": "TIER_RARE_ARMOR"
+		},
+		{
+			"id": "ACCESSORY_HEART_LOCKET"
+		}
+	],
+	"storageItems": [],
+	"consumableItems": [
+		{
+			"id": "TIER_GENESIS_POTION",
+			"quantity": 1
+		},
+		{
+			"id": "CONSUMABLE_ELIXIR",
+			"quantity": 3
+		},
+		{
+			"id": "CONSUMABLE_MANA_POTION",
+			"quantity": 97
+		}
+	],
+	"combatItems": [
+		{
+			"id": "CONSUMABLE_ELIXIR",
+			"quantity": 1
+		},
+		{
+			"id": "CONSUMABLE_MANA_POTION",
+			"quantity": 1
+		},
+		{
+			"id": "TIER_RARE_POTION",
+			"quantity": 1
+		},
+		{
+			"id": "TIER_HEROIC_POTION",
+			"quantity": 1
+		},
+		{
+			"id": "TIER_LEGENDARY_POTION",
+			"quantity": 1
+		},
+		{
+			"id": "TIER_GENESIS_POTION",
+			"quantity": 1
+		}
+	]
+}
+}
