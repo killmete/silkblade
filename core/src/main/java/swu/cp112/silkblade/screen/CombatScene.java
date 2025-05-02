@@ -1838,6 +1838,50 @@ public class CombatScene implements Screen {
                     savedDefeatMessage += "\nLEVEL UP! You are now level " + player.getLevel() + "!";
                     player.heal(player.getMaxHP());
                 }
+                
+                // Check if the defeated enemy is a boss, and if so, mark it as defeated
+                // A boss can be detected in two ways:
+                // 1. Enemy name contains "BOSS"
+                // 2. Current stage is a multiple of 10 (every 10th stage is a boss)
+                boolean isBoss = false;
+                int bossNumber = -1;
+                
+                // Check by name first
+                if (currentEnemy.getName().contains("BOSS")) {
+                    isBoss = true;
+                    try {
+                        // Extract boss number from name (assuming names like "BOSS 1" or "BOSS1")
+                        String name = currentEnemy.getName();
+                        if (name.contains("BOSS 1") || name.contains("BOSS1")) {
+                            bossNumber = 1;
+                        } else if (name.contains("BOSS 2") || name.contains("BOSS2")) {
+                            bossNumber = 2;
+                        } else if (name.contains("BOSS 3") || name.contains("BOSS3")) {
+                            bossNumber = 3;
+                        } else if (name.contains("BOSS 4") || name.contains("BOSS4")) {
+                            bossNumber = 4;
+                        } else if (name.contains("BOSS 5") || name.contains("BOSS5")) {
+                            bossNumber = 5;
+                        }
+                    } catch (Exception e) {
+                        GameLogger.logError("Error determining boss number from name: " + currentEnemy.getName(), e);
+                    }
+                }
+                
+                // If not identified by name, check by stage number
+                if (!isBoss && player.getCurrentStage() % 10 == 0) {
+                    isBoss = true;
+                    // Calculate boss number based on stage (stage 10 = boss 1, stage 20 = boss 2, etc.)
+                    bossNumber = player.getCurrentStage() / 10;
+                    if (bossNumber > 5) bossNumber = 5; // Cap at 5 bosses total
+                }
+                
+                // Mark the appropriate boss as defeated
+                if (isBoss && bossNumber > 0 && bossNumber <= 5) {
+                    player.setBossDefeated(bossNumber, true);
+                    GameLogger.logInfo("Boss " + bossNumber + " marked as defeated");
+                }
+                
                 setDialogueText(savedDefeatMessage);
                 showDefeatedEnemy = false;
                 pendingDefeatMessage = false;

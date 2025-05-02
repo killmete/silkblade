@@ -58,6 +58,13 @@ public class Player implements Json.Serializable {
     private int currentStage = 1; // Default to stage 1
     private int gold = 0;         // Default to 0 gold
 
+    // Boss tracking
+    private boolean boss1Defeated = false;
+    private boolean boss2Defeated = false;
+    private boolean boss3Defeated = false;
+    private boolean boss4Defeated = false;
+    private boolean boss5Defeated = false;
+
     // Visual representation
     private transient Texture texture;  // transient means it won't be serialized
     private transient Sprite sprite;
@@ -129,6 +136,12 @@ public class Player implements Json.Serializable {
         this.currentStage = 1;
         this.gold = 0;
         this.inventory = new Inventory();
+        // Initialize boss tracking to false
+        this.boss1Defeated = false;
+        this.boss2Defeated = false;
+        this.boss3Defeated = false;
+        this.boss4Defeated = false;
+        this.boss5Defeated = false;
         initializeSprite();
         initializeSkills();
         initializeSounds();
@@ -148,6 +161,12 @@ public class Player implements Json.Serializable {
         this.currentStage = 1;
         this.gold = 0;
         this.inventory = new Inventory();
+        // Initialize boss tracking to false
+        this.boss1Defeated = false;
+        this.boss2Defeated = false;
+        this.boss3Defeated = false;
+        this.boss4Defeated = false;
+        this.boss5Defeated = false;
         initializeSprite();
         initializeSkills();
         initializeSounds();
@@ -242,11 +261,11 @@ public class Player implements Json.Serializable {
     private void initializeSkills() {
         unlockedSkills = new boolean[SkillType.values().length];
         unlockedSkills[SkillType.BASIC.ordinal()] = true;  // BASIC is always unlocked
-        unlockedSkills[SkillType.SKILL1.ordinal()] = true;  // Unlock Skill for debug
-        unlockedSkills[SkillType.SKILL2.ordinal()] = true;  // Unlock Skill for debug
-        unlockedSkills[SkillType.SKILL3.ordinal()] = true;  // Unlock Skill for debug
-        unlockedSkills[SkillType.SKILL4.ordinal()] = true;  // Unlock Skill for debug
-        unlockedSkills[SkillType.SKILL5.ordinal()] = true;  // Unlock Skill for debug
+        unlockedSkills[SkillType.SKILL1.ordinal()] = false;  // Unlock Skill for debug
+        unlockedSkills[SkillType.SKILL2.ordinal()] = false;  // Unlock Skill for debug
+        unlockedSkills[SkillType.SKILL3.ordinal()] = false;  // Unlock Skill for debug
+        unlockedSkills[SkillType.SKILL4.ordinal()] = false;  // Unlock Skill for debug
+        unlockedSkills[SkillType.SKILL5.ordinal()] = false;  // Unlock Skill for debug
         currentSkill = SkillType.BASIC;
     }
 
@@ -517,6 +536,12 @@ public class Player implements Json.Serializable {
         json.writeValue("currentStage", currentStage);
         json.writeValue("gold", gold);
         json.writeValue("inventory", inventory);
+        // Save boss tracking
+        json.writeValue("boss1Defeated", boss1Defeated);
+        json.writeValue("boss2Defeated", boss2Defeated);
+        json.writeValue("boss3Defeated", boss3Defeated);
+        json.writeValue("boss4Defeated", boss4Defeated);
+        json.writeValue("boss5Defeated", boss5Defeated);
     }
 
     @Override
@@ -556,6 +581,13 @@ public class Player implements Json.Serializable {
         // Read the new fields with default values if not found
         currentStage = jsonData.getInt("currentStage", 1);
         gold = jsonData.getInt("gold", 0);
+
+        // Read boss tracking status with default values if not found
+        boss1Defeated = jsonData.getBoolean("boss1Defeated", false);
+        boss2Defeated = jsonData.getBoolean("boss2Defeated", false);
+        boss3Defeated = jsonData.getBoolean("boss3Defeated", false);
+        boss4Defeated = jsonData.getBoolean("boss4Defeated", false);
+        boss5Defeated = jsonData.getBoolean("boss5Defeated", false);
 
         // Read inventory or create a new one if not found
         JsonValue inventoryValue = jsonData.get("inventory");
@@ -773,5 +805,88 @@ public class Player implements Json.Serializable {
 
     public Inventory getInventory() {
         return inventory;
+    }
+
+    // Boss tracking methods
+    public boolean isBoss1Defeated() {
+        return boss1Defeated;
+    }
+
+    public boolean isBoss2Defeated() {
+        return boss2Defeated;
+    }
+
+    public boolean isBoss3Defeated() {
+        return boss3Defeated;
+    }
+
+    public boolean isBoss4Defeated() {
+        return boss4Defeated;
+    }
+
+    public boolean isBoss5Defeated() {
+        return boss5Defeated;
+    }
+
+    public void setBoss1Defeated(boolean defeated) {
+        this.boss1Defeated = defeated;
+    }
+
+    public void setBoss2Defeated(boolean defeated) {
+        this.boss2Defeated = defeated;
+    }
+
+    public void setBoss3Defeated(boolean defeated) {
+        this.boss3Defeated = defeated;
+    }
+
+    public void setBoss4Defeated(boolean defeated) {
+        this.boss4Defeated = defeated;
+    }
+
+    public void setBoss5Defeated(boolean defeated) {
+        this.boss5Defeated = defeated;
+    }
+
+    // Helper method to set boss defeated by boss number
+    public void setBossDefeated(int bossNumber, boolean defeated) {
+        switch (bossNumber) {
+            case 1:
+                setBoss1Defeated(defeated);
+                break;
+            case 2:
+                setBoss2Defeated(defeated);
+                break;
+            case 3:
+                setBoss3Defeated(defeated);
+                break;
+            case 4:
+                setBoss4Defeated(defeated);
+                break;
+            case 5:
+                setBoss5Defeated(defeated);
+                break;
+            default:
+                GameLogger.logError("Invalid boss number: " + bossNumber, null);
+        }
+    }
+
+    // Helper method to check if a boss is defeated by boss number
+    public boolean isBossDefeated(int bossNumber) {
+        switch (bossNumber) {
+            case 1:
+                return isBoss1Defeated();
+            case 2:
+                return isBoss2Defeated();
+            case 3:
+                return isBoss3Defeated();
+            case 4:
+                return isBoss4Defeated();
+            case 5:
+                return isBoss5Defeated();
+            default:
+                GameLogger.logError("Invalid boss number: " + bossNumber, null);
+                return false;
+        }
     }
 }

@@ -32,21 +32,21 @@ public class InventoryScreen implements Screen {
         // Layout
         static final float TITLE_Y_POSITION = 60;
         static final float PLAYER_STATS_START_Y = 400;
-        static final float PLAYER_STATS_SPACING = 40;
+        static final float PLAYER_STATS_SPACING = 35;
         static final float SECTION_TITLE_Y = 150; // Aligned with player stats
         static final float ITEMS_START_Y = 200; // Moved up to align with stats display
-        static final float ITEMS_SPACING_Y = 50;
+        static final float ITEMS_SPACING_Y = 40;
         static final float DESCRIPTION_Y = 350;
         static final float DESCRIPTION_HEIGHT = 280;
         static final float NAVIGATION_HELP_Y = 40;
         static final float LEFT_MARGIN = 80;
         static final float RIGHT_MARGIN = 640;
         static final float EQUIPPED_ITEM_NAME_OFFSET = 250;
-        static final float FONT_SCALE = 2f;
-        static final float ITEM_FONT_SCALE = 1.5f;
-        static final float STATS_FONT_SCALE = 1.3f;
-        static final float DESC_FONT_SCALE = 1.2f;
-        static final int MAX_VISIBLE_ITEMS = 8; // Maximum items visible at once
+        static final float FONT_SCALE = 1.7f;
+        static final float ITEM_FONT_SCALE = 1.3f;
+        static final float STATS_FONT_SCALE = 1.1f;
+        static final float DESC_FONT_SCALE = 1.0f;
+        static final int MAX_VISIBLE_ITEMS = 10;
 
         // Colors
         static final Color TITLE_COLOR = Color.WHITE;
@@ -127,6 +127,9 @@ public class InventoryScreen implements Screen {
     private final com.badlogic.gdx.graphics.glutils.ShapeRenderer shapeRenderer;
 
     private float genesisSineTime = 0;
+
+    // Added to track the item tier for the examine box outline
+    private swu.cp112.silkblade.entity.item.ItemTier currentExaminedItemTier = null;
 
     public InventoryScreen(Game game) {
         this.game = game;
@@ -679,13 +682,13 @@ public class InventoryScreen implements Screen {
         float contentWidth = Math.max(Math.max(titleLayout.width, descLayout.width), closeLayout.width) + 60; // Add padding
         float minWidth = screenWidth * 0.3f; // Minimum width
         float boxWidth = Math.max(contentWidth, minWidth);
-        boxWidth = Math.min(boxWidth, screenWidth * 0.8f); // Cap maximum width
+        boxWidth = Math.min(boxWidth, screenWidth * 0.7f); // Cap maximum width to 70% (reduced from 80%)
 
         // Count number of lines in description (roughly estimate based on width)
         int numLines = (int)Math.ceil(descLayout.width / boxWidth) + itemDescription.split("\n").length;
-        float lineHeight = descLayout.height * 1.5f; // Add some spacing between lines
+        float lineHeight = descLayout.height * 1.4f; // Slightly reduced spacing (was 1.5f)
         float boxHeight = lineHeight * (numLines + 4); // Add space for title and close text
-        boxHeight = Math.min(boxHeight, screenHeight * 0.7f); // Cap maximum height
+        boxHeight = Math.min(boxHeight, screenHeight * 0.65f); // Cap maximum height (reduced from 70%)
 
         // Center the box on screen
         float boxX = (screenWidth - boxWidth) / 2;
@@ -702,9 +705,27 @@ public class InventoryScreen implements Screen {
         shapeRenderer.rect(boxX, boxY, boxWidth, boxHeight);
         shapeRenderer.end();
 
-        // Draw white outline
+        // Draw outline with tier color instead of white
         shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
-        shapeRenderer.setColor(1, 1, 1, 1f);
+        
+        if (currentExaminedItemTier != null) {
+            // Use tier color for the outline
+            if (currentExaminedItemTier.isAnimated()) {
+                // For Genesis tier, create rainbow effect
+                float r = (float) Math.sin(genesisSineTime) * 0.5f + 0.5f;
+                float g = (float) Math.sin(genesisSineTime + 2.0f) * 0.5f + 0.5f;
+                float b = (float) Math.sin(genesisSineTime + 4.0f) * 0.5f + 0.5f;
+                shapeRenderer.setColor(r, g, b, 1f);
+            } else {
+                // For all other tiers, use the pre-defined color
+                Color tierColor = currentExaminedItemTier.getColor();
+                shapeRenderer.setColor(tierColor);
+            }
+        } else {
+            // Fallback to white if tier is somehow null
+            shapeRenderer.setColor(1, 1, 1, 1f);
+        }
+        
         shapeRenderer.rect(boxX, boxY, boxWidth, boxHeight);
         shapeRenderer.end();
 
@@ -743,6 +764,7 @@ public class InventoryScreen implements Screen {
             // When examining an item, pressing any key returns to normal view
             if (Gdx.input.isKeyJustPressed(Input.Keys.ANY_KEY)) {
                 examiningItem = false;
+                currentExaminedItemTier = null; // Reset the item tier
                 selectSound.play();
             }
             return;
@@ -1294,6 +1316,7 @@ public class InventoryScreen implements Screen {
         }
 
         itemDescription = sb.toString();
+        currentExaminedItemTier = item.getTier();
     }
 
     private void buildItemDescription(ConsumableItem item) {
@@ -1309,6 +1332,7 @@ public class InventoryScreen implements Screen {
         }
 
         itemDescription = sb.toString();
+        currentExaminedItemTier = item.getTier();
     }
 
     private String formatBonus(int value) {
