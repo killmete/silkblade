@@ -86,11 +86,11 @@ Comprehensive documentation is available to understand the project structure and
 ## Screenshots
 
 <p align="center">
-  <img src="screenshots/combat.png" alt="Combat" width="400"/>
-  <img src="screenshots/boss.png" alt="Boss Battle" width="400"/>
+  <img src="assets/screenshots/combat.png" alt="Combat" width="400"/>
+  <img src="assets/screenshots/boss.png" alt="Boss Battle" width="400"/>
   <br>
-  <img src="screenshots/menu.png" alt="Menu" width="400"/>
-  <img src="screenshots/inventory.png" alt="Inventory" width="400"/>
+  <img src="assets/screenshots/menu.png" alt="Menu" width="400"/>
+  <img src="assets/screenshots/inventory.png" alt="Inventory" width="400"/>
 </p>
 
 ## Contributing
