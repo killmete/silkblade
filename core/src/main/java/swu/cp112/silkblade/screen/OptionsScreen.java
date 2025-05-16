@@ -57,6 +57,28 @@ public class OptionsScreen implements Screen {
     }
 
     /**
+     * Returns the width and height for a resolution by index
+     * @param index The resolution index
+     * @return Array containing [width, height], or null if invalid index
+     */
+    public static int[] getResolutionByIndex(int index) {
+        // Available resolutions (must match the ones initialized in constructor)
+        int[][] resolutions = {
+            {800, 600},    // 0
+            {1024, 768},   // 1
+            {1280, 720},   // 2 (default)
+            {1366, 768},   // 3
+            {1600, 900},   // 4
+            {1920, 1080}   // 5
+        };
+        
+        if (index >= 0 && index < resolutions.length) {
+            return resolutions[index];
+        }
+        return null;
+    }
+
+    /**
      * Display configuration
      */
     private static final class DisplayConfig {
@@ -79,7 +101,7 @@ public class OptionsScreen implements Screen {
     /**
      * Options configuration
      */
-    private static final class OptionsConfig {
+    public static final class OptionsConfig {
         static final String TITLE = "OPTIONS";
         static final String[] OPTION_LABELS = {
             "Resolution",
@@ -87,7 +109,7 @@ public class OptionsScreen implements Screen {
             "Movement Speed",
             "Back"
         };
-        static final String OPTIONS_FILE = "options.json";
+        public static final String OPTIONS_FILE = "options.json";
     }
 
     /**

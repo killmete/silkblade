@@ -309,12 +309,25 @@ public class CombatScene implements Screen {
             }
             this.player = Player.loadFromFile();
 
+            // Initialize viewport and camera first so they can be used for texture sizing
+            viewport = Main.getViewport();
+            camera = Main.getCamera();
+
+            // Initialize rendering objects BEFORE loading background textures
+            spriteBatch = new SpriteBatch();
+            shapeRenderer = new ShapeRenderer();
+            font = new BitmapFont(Gdx.files.internal("fonts/DTM.fnt"));
+            font.setColor(Color.WHITE);
+            font.getData().setScale(2);
+
             // Try loading the enemy's custom background if available
             if (enemy.getCombatBackground() != null) {
                 try {
                     String backgroundPath = enemy.getCombatBackground();
                     this.enemyBackgroundTexture = new Texture(Gdx.files.internal(backgroundPath));
                     GameLogger.logInfo("Loaded enemy background: " + backgroundPath);
+                    // Initialize blur effect AFTER spriteBatch is initialized
+                    initializeBackgroundBlur();
                 } catch (Exception e) {
                     GameLogger.logError("Failed to load enemy background", e);
                     this.enemyBackgroundTexture = null;
@@ -325,9 +338,6 @@ public class CombatScene implements Screen {
             // Ensure the player's BuffManager is initialized
             player.ensureBuffManagerExists();
 
-            viewport = Main.getViewport();
-            camera = Main.getCamera();
-
             // Initialize default text speed
             this.currentTextSpeed = LETTER_DELAY;
 
@@ -337,13 +347,6 @@ public class CombatScene implements Screen {
             this.dialogueArenaHeight = ARENA_DEFAULT_HEIGHT;
             this.currentArenaWidth = ARENA_DEFAULT_WIDTH;
             this.currentArenaHeight = ARENA_DEFAULT_HEIGHT;
-
-            // Initialize rendering objects
-            spriteBatch = new SpriteBatch();
-            shapeRenderer = new ShapeRenderer();
-            font = new BitmapFont(Gdx.files.internal("fonts/DTM.fnt"));
-            font.setColor(Color.WHITE);
-            font.getData().setScale(2);
 
             // Initialize player
             playerTexture = new Texture("player.png");
@@ -424,6 +427,10 @@ public class CombatScene implements Screen {
         if (enemyBackgroundTexture == null && !backgroundLoadAttempted) {
             loadEnemyBackground();
         }
+        // Force refresh of the background blur to ensure correct sizing even if already loaded
+        else if (enemyBackgroundTexture != null) {
+            initializeBackgroundBlur();
+        }
 
         // Reset free skill cast availability for the new combat
         player.resetFreeSkillCast();
@@ -480,6 +487,8 @@ public class CombatScene implements Screen {
 
         // Recreate blur effect after resize if background exists
         if (enemyBackgroundTexture != null) {
+            // Need to force recreate the blur effect with the new dimensions
+            // GameLogger.logInfo("Recreating background blur on resize: " + width + "x" + height);
             initializeBackgroundBlur();
         }
     }
@@ -634,40 +643,50 @@ public class CombatScene implements Screen {
 
     // =================== Rendering Methods ===================
     private void renderGameElements() {
-        // First, render the background (if custom background exists)
-        // This draws only the background portion, not the arena box
-        if (enemyBackgroundTexture != null) {
-            spriteBatch.setProjectionMatrix(camera.combined);
-            spriteBatch.begin();
+            // First, render the background (if custom background exists)
+    // This draws only the background portion, not the arena box
+    if (enemyBackgroundTexture != null) {
+        // Get the latest viewport dimensions and camera position
+        float screenWidth = viewport.getWorldWidth();
+        float screenHeight = viewport.getWorldHeight();
 
-            // Explicitly reset color to WHITE to prevent tinting from other rendering operations
-            spriteBatch.setColor(Color.WHITE);
+        // Reset the projection matrix with the latest camera settings
+        spriteBatch.setProjectionMatrix(camera.combined);
+        spriteBatch.begin();
 
-            float screenWidth = viewport.getWorldWidth();
-            float screenHeight = viewport.getWorldHeight();
+        // Explicitly reset color to WHITE to prevent tinting from other rendering operations
+        spriteBatch.setColor(Color.WHITE);
 
-            // Draw the blurred background if available, otherwise fallback to normal
-            if (backgroundBlurInitialized && blurredBackgroundTexture != null) {
-                // Fix for flipped y-coordinate in frame buffer textures
-                spriteBatch.draw(
-                    blurredBackgroundTexture,
-                    0, 0,                   // Position at top-left corner
-                    screenWidth, screenHeight,  // Size to draw
-                    0, 0,                   // Source texture coordinates
-                    blurredBackgroundTexture.getWidth(), blurredBackgroundTexture.getHeight(),
-                    false, true             // Flip y-coordinate to fix the upside-down issue
-                );
-            } else {
-                // Position background to cover the whole screen
-                spriteBatch.draw(
-                    enemyBackgroundTexture,
-                    0, 0,  // Position at top-left corner
-                    screenWidth, screenHeight  // Scale to full screen size
-                );
-            }
+        // Draw the blurred background if available, otherwise fallback to normal
+        if (backgroundBlurInitialized && blurredBackgroundTexture != null) {
+            // Calculate position to ensure the background fills the entire viewport
+            float x = camera.position.x - screenWidth/2;
+            float y = camera.position.y - screenHeight/2;
 
-            spriteBatch.end();
+            // Fix for flipped y-coordinate in frame buffer textures
+            spriteBatch.draw(
+                blurredBackgroundTexture,
+                x, y,                   // Position at bottom-left corner of the viewport
+                screenWidth, screenHeight,  // Size to draw
+                0, 0,                   // Source texture coordinates
+                blurredBackgroundTexture.getWidth(), blurredBackgroundTexture.getHeight(),
+                false, true             // Flip y-coordinate to fix the upside-down issue
+            );
+        } else {
+            // Calculate position to ensure the background fills the entire viewport
+            float x = camera.position.x - screenWidth/2;
+            float y = camera.position.y - screenHeight/2;
+
+            // Position background to cover the whole screen
+            spriteBatch.draw(
+                enemyBackgroundTexture,
+                x, y,  // Position at bottom-left corner of the viewport
+                screenWidth, screenHeight  // Scale to full screen size
+            );
         }
+
+        spriteBatch.end();
+    }
 
         // Then render the enemy if applicable, so it appears BEHIND the combat box
         // Show enemy if:
@@ -4047,8 +4066,12 @@ public class CombatScene implements Screen {
                 this.enemyBackgroundTexture = new Texture(Gdx.files.internal(backgroundPath));
                 GameLogger.logInfo("Loaded enemy background: " + backgroundPath);
 
-                // Initialize blur effect
-                initializeBackgroundBlur();
+                // Initialize blur effect only if spriteBatch is initialized
+                if (spriteBatch != null) {
+                    initializeBackgroundBlur();
+                } else {
+                    GameLogger.logInfo("SpriteBatch not yet initialized - deferring blur effect");
+                }
             } catch (Exception e) {
                 GameLogger.logError("Failed to load enemy background", e);
                 this.enemyBackgroundTexture = null;
@@ -4064,14 +4087,30 @@ public class CombatScene implements Screen {
         try {
             if (enemyBackgroundTexture == null) return;
 
+            // Check if spriteBatch is initialized
+            if (spriteBatch == null) {
+                GameLogger.logInfo("Cannot initialize background blur - SpriteBatch is null");
+                backgroundBlurInitialized = false;
+                return;
+            }
+
+            // Get current viewport dimensions for proper sizing
             float screenWidth = viewport.getWorldWidth();
             float screenHeight = viewport.getWorldHeight();
 
-            // Create a frame buffer at half resolution for better performance
+            // Clean up existing resources if they exist
+            if (blurFrameBuffer != null) {
+                blurFrameBuffer.dispose();
+            }
+            if (blurredBackgroundTexture != null) {
+                blurredBackgroundTexture.dispose();
+            }
+
+            // Create a frame buffer at current screen resolution
             blurFrameBuffer = new FrameBuffer(Pixmap.Format.RGBA8888,
                 (int)screenWidth, (int)screenHeight, false);
 
-            // Create a shader for the gaussian blur
+            // Create the blurred texture
             createBlurredBackgroundTexture();
 
             backgroundBlurInitialized = true;
@@ -4085,16 +4124,30 @@ public class CombatScene implements Screen {
     private void createBlurredBackgroundTexture() {
         if (enemyBackgroundTexture == null || blurFrameBuffer == null) return;
 
+        // Check if spriteBatch is initialized
+        if (spriteBatch == null) {
+            GameLogger.logInfo("Cannot create blurred background - SpriteBatch is null");
+            return;
+        }
+
+        // Get current viewport dimensions
         float screenWidth = viewport.getWorldWidth();
         float screenHeight = viewport.getWorldHeight();
+
+        // Save current SpriteBatch state
+        Matrix4 oldProjection = new Matrix4(spriteBatch.getProjectionMatrix());
 
         // Simple blur implementation - draw at reduced alpha multiple times with small offsets
         blurFrameBuffer.begin();
         Gdx.gl.glClearColor(0, 0, 0, 0);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
+        // Use identity matrix for frame buffer rendering to avoid camera positioning issues
+        Matrix4 identityMatrix = new Matrix4().setToOrtho2D(0, 0, screenWidth, screenHeight);
+        spriteBatch.setProjectionMatrix(identityMatrix);
+
         spriteBatch.begin();
-        // Draw the original texture
+        // Draw the original texture scaled to current screen size
         spriteBatch.setColor(1, 1, 1, 0.5f);
         spriteBatch.draw(enemyBackgroundTexture, 0, 0, screenWidth, screenHeight);
 
@@ -4124,6 +4177,9 @@ public class CombatScene implements Screen {
             blurredBackgroundTexture.dispose();
         }
         blurredBackgroundTexture = blurFrameBuffer.getColorBufferTexture();
+
+        // Restore original projection matrix
+        spriteBatch.setProjectionMatrix(oldProjection);
     }
 
     // Helper method to load game settings

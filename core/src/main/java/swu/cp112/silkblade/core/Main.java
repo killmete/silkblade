@@ -2,6 +2,7 @@ package swu.cp112.silkblade.core;
 
 import swu.cp112.silkblade.entity.item.ItemDatabase;
 import swu.cp112.silkblade.screen.MainMenuScreen;
+import swu.cp112.silkblade.screen.OptionsScreen;
 import swu.cp112.silkblade.screen.SaveFileSelectionScreen;
 import swu.cp112.silkblade.util.GameLogger;
 import com.badlogic.gdx.Game;
@@ -10,6 +11,7 @@ import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 
 /**
@@ -61,6 +63,7 @@ public class Main extends Game {
             initializeGraphics();
             initializeItemDatabase();
             initializeAudio();
+            initializeOptions();
 
             // Create save directory if it doesn't exist
             FileHandle saveDir = Gdx.files.local("save");
@@ -144,6 +147,74 @@ public class Main extends Game {
         backgroundMusic.setVolume(AudioConfig.MUSIC_VOLUME);
         backgroundMusic.play();
         GameLogger.logInfo("Audio initialized");
+    }
+
+    /**
+     * Initialize options and apply settings
+     */
+    private void initializeOptions() {
+        GameLogger.logInfo("Loading game options...");
+        
+        // Check if options file exists
+        FileHandle file = Gdx.files.local(OptionsScreen.OptionsConfig.OPTIONS_FILE);
+        OptionsScreen.GameSettings settings;
+        
+        if (file.exists()) {
+            try {
+                // Load existing options
+                Json json = new Json();
+                settings = json.fromJson(OptionsScreen.GameSettings.class, file.readString());
+                GameLogger.logInfo("Loaded existing options file");
+            } catch (Exception e) {
+                // Create default settings if loading fails
+                GameLogger.logError("Failed to load options, creating defaults", e);
+                settings = new OptionsScreen.GameSettings();
+                saveDefaultOptions(settings, OptionsScreen.OptionsConfig.OPTIONS_FILE);
+            }
+        } else {
+            // Create default settings if file doesn't exist
+            GameLogger.logInfo("No options file found, creating defaults");
+            settings = new OptionsScreen.GameSettings();
+            saveDefaultOptions(settings, OptionsScreen.OptionsConfig.OPTIONS_FILE);
+        }
+        
+        // Apply the settings
+        applyGameSettings(settings);
+    }
+    
+    /**
+     * Save default options to file
+     */
+    private void saveDefaultOptions(OptionsScreen.GameSettings settings, String optionsFile) {
+        try {
+            Json json = new Json();
+            String jsonStr = json.prettyPrint(settings);
+            
+            FileHandle file = Gdx.files.local(optionsFile);
+            file.writeString(jsonStr, false);
+            
+            GameLogger.logInfo("Default options saved successfully");
+        } catch (Exception e) {
+            GameLogger.logError("Failed to save default options", e);
+        }
+    }
+    
+    /**
+     * Apply loaded game settings
+     */
+    private void applyGameSettings(OptionsScreen.GameSettings settings) {
+        // Apply resolution if not in fullscreen
+        if (!settings.fullscreen) {
+            int[] resolution = OptionsScreen.getResolutionByIndex(settings.resolutionIndex);
+            if (resolution != null) {
+                Gdx.graphics.setWindowedMode(resolution[0], resolution[1]);
+            }
+        }
+        
+        // Apply fullscreen
+        if (settings.fullscreen) {
+            Gdx.graphics.setFullscreenMode(Gdx.graphics.getDisplayMode());
+        }
     }
 
     private void setInitialScreen() {

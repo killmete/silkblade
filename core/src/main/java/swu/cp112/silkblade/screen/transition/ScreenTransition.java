@@ -227,21 +227,63 @@ public class ScreenTransition implements Screen {
 
         // Resize buffers and screens
         disposeBuffers();
-        currentScreenBuffer = new FrameBuffer(
-            com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888,
-            width,
-            height,
-            false
-        );
-        nextScreenBuffer = new FrameBuffer(
-            com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888,
-            width,
-            height,
-            false
-        );
+        
+        try {
+            // First attempt: try to create framebuffers with exact dimensions
+            currentScreenBuffer = new FrameBuffer(
+                com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888,
+                width,
+                height,
+                false
+            );
+            nextScreenBuffer = new FrameBuffer(
+                com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888,
+                width,
+                height,
+                false
+            );
+        } catch (IllegalStateException e) {
+            // Handle framebuffer creation error - some hardware requires power-of-two textures
+            // Get nearest power of 2 dimensions
+            int pot_width = nextPowerOfTwo(width);
+            int pot_height = nextPowerOfTwo(height);
+            
+            // Log warning about frame buffer resize
+            Gdx.app.log("ScreenTransition", "Failed to create framebuffer with dimensions " + 
+                        width + "x" + height + ", using " + pot_width + "x" + pot_height + " instead");
+            
+            currentScreenBuffer = new FrameBuffer(
+                com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888,
+                pot_width,
+                pot_height,
+                false
+            );
+            nextScreenBuffer = new FrameBuffer(
+                com.badlogic.gdx.graphics.Pixmap.Format.RGBA8888,
+                pot_width,
+                pot_height,
+                false
+            );
+        }
 
         currentScreen.resize(width, height);
         nextScreen.resize(width, height);
+    }
+    
+    /**
+     * Returns the next power of two value.
+     * @param value The value to get the next power of two for
+     * @return The next power of two
+     */
+    private int nextPowerOfTwo(int value) {
+        if (value == 0) return 1;
+        value--;
+        value |= value >> 1;
+        value |= value >> 2;
+        value |= value >> 4;
+        value |= value >> 8;
+        value |= value >> 16;
+        return value + 1;
     }
 
     @Override
