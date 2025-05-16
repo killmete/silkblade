@@ -58,7 +58,8 @@ public class Bullet {
     private float homingDuration;
     private float homingTimer;
     private float homingStrength;
-    private float targetX, targetY;
+    private float targetX;
+    private float targetY;
 
     // Telegraph properties
     private boolean isTelegraphing = false;
@@ -1269,6 +1270,9 @@ public class Bullet {
     }
 
     // Add these methods after other getters/setters
+    public boolean isHoming() {
+        return isHoming;
+    }
     public void setRotation(float radians) {
         this.rotation = radians;
     }

@@ -17,7 +17,7 @@ import java.util.List;
  */
 public class ConvergingStarPattern implements EnemyAttackPattern {
     private static final AttackPatternConfig CONFIG = new AttackPatternConfig(
-        3, 6, 1.25f, 0.455f, 20, 790f, 400f, Color.YELLOW, false,
+        4, 9, 1.25f, 0.455f, 15, 790f, 400f, Color.YELLOW, false,
         "Stars spawning around player, immediately converging on their position."
     );
 

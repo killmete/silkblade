@@ -208,6 +208,9 @@ public class CharacterCreationScreen implements Screen, InputProcessor {
             try {
                 // Create new player with the given name
                 Player player = new Player(characterName.toString());
+                
+                // Add gold for testing shop
+                player.setGold(10000);
 
                 // Save the player data
                 player.saveToFile();

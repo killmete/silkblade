@@ -1,14 +1,16 @@
 {
-"name": "h",
-"level": 1,
-"exp": 0,
-"mp": 65,
-"maxMP": 20,
-"attack": 12,
-"critRate": 0.1,
-"defense": 10,
-"maxHP": 20,
-"currentHP": 115,
+"name": "A",
+"level": 20,
+"exp": 99999,
+"mp": 298,
+"maxMP": 295,
+"attack": 260,
+"critRate": 0.26000002,
+"defense": 105,
+"maxHP": 358,
+"currentHP": 412,
+"currentStage": 50,
+"gold": 3949022,
 "unlockedSkills": [
 	true,
 	true,
@@ -16,80 +18,106 @@
 	true,
 	true,
 	true,
-	false
+	true
 ],
-"currentSkill": "BASIC",
-"currentStage": 1,
-"gold": 0,
+"currentSkill": "SKILL1",
 "inventory": {
 	"equippedItems": [
 		{
-			"id": "TIER_LEGENDARY_WEAPON"
+			"id": "WEAPON_ETERNAL_SILKBLADE"
 		},
 		{
-			"id": "TIER_LEGENDARY_ARMOR"
+			"id": "ARMOR_COSMIC_SILK_VESTMENT"
 		},
 		{
-			"id": "TIER_HEROIC_ACCESSORY"
+			"id": "ACCESSORY_TRANSCENDENT_SILK_CROWN"
 		}
 	],
 	"inventoryItems": [
 		{
-			"id": "TIER_HEROIC_WEAPON"
+			"id": "WEAPON_SILKBLADE_OF_JUDGEMENT"
 		},
 		{
-			"id": "TIER_RARE_WEAPON"
+			"id": "WEAPON_ENCHANTED_SILK_SABER"
 		},
 		{
-			"id": "WEAPON_REAL_KNIFE"
+			"id": "WEAPON_TWIN_SILK_BLADES"
 		},
 		{
-			"id": "TIER_RARE_ARMOR"
+			"id": "WEAPON_ANCIENT_PATTERN_BLADE"
 		},
 		{
-			"id": "ACCESSORY_HEART_LOCKET"
+			"id": "WEAPON_SOFT_LAMPHUN_SILK"
+		},
+		{
+			"id": "ARMOR_SILK_AEGIS"
+		},
+		{
+			"id": "ARMOR_SILK_ARMOR"
+		},
+		{
+			"id": "ARMOR_SILK_ROBE"
+		},
+		{
+			"id": "ARMOR_SILK_GARMENT"
+		},
+		{
+			"id": "ARMOR_LAMPHUN_SHIRT"
+		},
+		{
+			"id": "ACCESSORY_SILK_TALISMAN"
+		},
+		{
+			"id": "ACCESSORY_SILK_BRACELET"
+		},
+		{
+			"id": "ACCESSORY_SILK_RING"
+		},
+		{
+			"id": "ACCESSORY_SPIRIT_CHARM"
 		}
 	],
 	"storageItems": [],
 	"consumableItems": [
 		{
-			"id": "TIER_GENESIS_POTION",
-			"quantity": 1
-		},
-		{
-			"id": "CONSUMABLE_ELIXIR",
+			"id": "CONSUMABLE_DRAGON_SILK",
 			"quantity": 3
 		},
 		{
-			"id": "CONSUMABLE_MANA_POTION",
-			"quantity": 97
+			"id": "CONSUMABLE_DOI_TI_HONEY",
+			"quantity": 2
+		},
+		{
+			"id": "CONSUMABLE_HERBAL_DRINK",
+			"quantity": 31
 		}
 	],
 	"combatItems": [
 		{
-			"id": "CONSUMABLE_ELIXIR",
+			"id": "CONSUMABLE_HERBAL_DRINK",
 			"quantity": 1
 		},
 		{
-			"id": "CONSUMABLE_MANA_POTION",
+			"id": "CONSUMABLE_DOI_TI_HONEY",
 			"quantity": 1
 		},
 		{
-			"id": "TIER_RARE_POTION",
+			"id": "CONSUMABLE_DOI_TI_HONEY",
 			"quantity": 1
 		},
 		{
-			"id": "TIER_HEROIC_POTION",
+			"id": "CONSUMABLE_ANCIENT_ELIXIR",
 			"quantity": 1
 		},
 		{
-			"id": "TIER_LEGENDARY_POTION",
-			"quantity": 1
-		},
-		{
-			"id": "TIER_GENESIS_POTION",
+			"id": "CONSUMABLE_DRAGON_SILK",
 			"quantity": 1
 		}
 	]
-}
+},
+"boss1Defeated": true,
+"boss2Defeated": true,
+"boss3Defeated": true,
+"boss4Defeated": true,
+"boss5Defeated": true
 }

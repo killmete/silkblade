@@ -7,6 +7,7 @@ import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.Sprite;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.Json;
 import com.badlogic.gdx.utils.JsonValue;
 import com.badlogic.gdx.utils.JsonWriter;
@@ -15,6 +16,8 @@ import swu.cp112.silkblade.entity.enemy.Enemy;
 import swu.cp112.silkblade.entity.item.Equipment;
 import swu.cp112.silkblade.entity.item.Inventory;
 import swu.cp112.silkblade.util.GameLogger;
+import swu.cp112.silkblade.screen.CombatScene;
+import swu.cp112.silkblade.screen.ScreenManager;
 
 public class Player implements Json.Serializable {
     private static final String SAVE_FILE = "save/player_save.json";
@@ -84,25 +87,28 @@ public class Player implements Json.Serializable {
     // Add this near the other constants
     private static final int[] SKILL_MP_COSTS = {
         0,    // BASIC:  0 MP
-        5,    // SKILL1: 5 MP
-        8,    // SKILL2: 8 MP
-        12,   // SKILL3: 12 MP
-        15,   // SKILL4: 15 MP
-        20,   // SKILL5: 20 MP
+        15,   // SKILL1: 15 MP - Dark Silk Face Slap
+        25,   // SKILL2: 25 MP - Silk Scratch of Salvation
+        30,   // SKILL3: 30 MP - Duckfoot Knot from Heaven
+        35,   // SKILL4: 35 MP - Sai-Oua Silk Wrap
+        50,   // SKILL5: 50 MP - Lamphun Blade: Piip Slash Supreme
         -1    // SKILL6: special case - uses all MP
     };
 
     private static final float BASE_MP_REGEN = 1; // Base MP regen per turn
     private static final float MP_REGEN_LEVEL_SCALING = 2.5f; // Additional MP regen per level
 
+    // Track free skill cast availability
+    private boolean freeSkillCastAvailable = false;
+
     public enum SkillType {
         BASIC("Slash"),  // Always available
-        SKILL1("Quick Strike"),
-        SKILL2("Power Slash"),
-        SKILL3("Blade Dance"),
-        SKILL4("Shadow Strike"),
-        SKILL5("Dragon Fang"),
-        SKILL6("Ultimate Technique");
+        SKILL1("Dark Silk Face Slap"),
+        SKILL2("Silk Scratch of Salvation"),
+        SKILL3("Duckfoot Knot from Heaven"),
+        SKILL4("Sai-Oua Silk Wrap"),
+        SKILL5("Lamphun Blade: Piip Slash Supreme"),
+        SKILL6("Silk End - I Am Cosmic Weave");
 
         private final String displayName;
 
@@ -121,6 +127,9 @@ public class Player implements Json.Serializable {
 
     // Add inventory system
     private Inventory inventory;
+
+    // Add buff manager for temporary effects
+    private transient BuffManager buffManager;
 
     public Player() {
         // Default constructor for JSON deserialization
@@ -145,6 +154,7 @@ public class Player implements Json.Serializable {
         initializeSprite();
         initializeSkills();
         initializeSounds();
+        this.buffManager = new BuffManager(this);
     }
 
     public Player(String name) {
@@ -170,13 +180,13 @@ public class Player implements Json.Serializable {
         initializeSprite();
         initializeSkills();
         initializeSounds();
+        this.buffManager = new BuffManager(this);
     }
 
     private void initializeSprite() {
         try {
             texture = new Texture("player.png");
             sprite = new Sprite(texture);
-            GameLogger.logInfo("Player sprite initialized");
         } catch (Exception e) {
             GameLogger.logError("Failed to initialize player sprite", e);
         }
@@ -204,8 +214,6 @@ public class Player implements Json.Serializable {
             skillSoundDurations[SkillType.SKILL4.ordinal()] = getSoundDuration("sounds/skill4.wav");
             skillSoundDurations[SkillType.SKILL5.ordinal()] = getSoundDuration("sounds/skill5.wav");
             skillSoundDurations[SkillType.SKILL6.ordinal()] = getSoundDuration("sounds/skill6.wav");
-
-            GameLogger.logInfo("Player sounds initialized");
         } catch (Exception e) {
             GameLogger.logError("Failed to initialize player sounds", e);
         }
@@ -261,11 +269,12 @@ public class Player implements Json.Serializable {
     private void initializeSkills() {
         unlockedSkills = new boolean[SkillType.values().length];
         unlockedSkills[SkillType.BASIC.ordinal()] = true;  // BASIC is always unlocked
-        unlockedSkills[SkillType.SKILL1.ordinal()] = false;  // Unlock Skill for debug
-        unlockedSkills[SkillType.SKILL2.ordinal()] = false;  // Unlock Skill for debug
-        unlockedSkills[SkillType.SKILL3.ordinal()] = false;  // Unlock Skill for debug
-        unlockedSkills[SkillType.SKILL4.ordinal()] = false;  // Unlock Skill for debug
-        unlockedSkills[SkillType.SKILL5.ordinal()] = false;  // Unlock Skill for debug
+        unlockedSkills[SkillType.SKILL1.ordinal()] = false;  // Dark Silk Face Slap (unlocked at stage 10)
+        unlockedSkills[SkillType.SKILL2.ordinal()] = false;  // Silk Scratch of Salvation (unlocked after 30th floor boss)
+        unlockedSkills[SkillType.SKILL3.ordinal()] = false;  // Duckfoot Knot from Heaven (unlocked at level 12)
+        unlockedSkills[SkillType.SKILL4.ordinal()] = false;  // Sai-Oua Silk Wrap (unlocked after 20th floor boss)
+        unlockedSkills[SkillType.SKILL5.ordinal()] = false;  // Lamphun Blade: Piip Slash Supreme (unlocked after 40th floor boss)
+        unlockedSkills[SkillType.SKILL6.ordinal()] = false;  // Silk End - I Am Cosmic Weave (unlocked after defeating Boss 5)
         currentSkill = SkillType.BASIC;
     }
 
@@ -283,28 +292,27 @@ public class Player implements Json.Serializable {
             level++;
 
             // Modified stat increase formulas for better scaling:
+            // Tune down HP scaling to be more linear
             // HP increases more significantly at higher levels
-            maxHP += 4 + (level * 3);  // Changed from (level * 2)
+            maxHP += 5 + (int)(level * 1.2f);  // Changed from 4 + (level * 3)
             currentHP = maxHP;  // Full heal on level up
 
+            // Tune down Attack scaling to be more linear
             // Attack increases more with level
-            attack += 2 + (int)(level * 1.5f);  // Changed from (2 + level)
+            attack += 2 + (int)(level * 1.05f);  // Changed from 2 + (int)(level * 1.5f)
 
-            // MP scales better with level
-            maxMP += 5 + (int)(level * 1.2f);  // Changed from (4 + level)
-            setMP(getMaxMP());
+            // MP scales better with level (keep this the same)
+            maxMP += 3 + (int)(level * 1.087f);
 
+            // Tune down Defense scaling to be more linear
             // Defense scales better but not too quickly
-            defense += 1 + (int)(level * 0.7f);  // Changed from (1 + (level / 4))
+            defense += 1 + (int)(level * 0.4f);  // Changed from 1 + (int)(level * 0.7f)
 
-            // Crit rate increases more significantly
-            critRate = Math.min(0.1f + (level * 0.008f), 0.35f);  // Changed max from 0.25f to 0.35f
+            // Crit rate increases more significantly (keep this the same)
+            critRate = Math.min(0.1f + (level * 0.008f), 0.35f);
 
-            // Unlock SKILL6 at max level
-            if (level == MAX_LEVEL) {
-                unlockSkill(SkillType.SKILL6);
-                GameLogger.logInfo("Maximum level reached! SKILL6 unlocked!");
-            }
+            // Check for skill unlocks
+            checkSkillUnlocks();
         }
 
         // Cap exp at max level requirement
@@ -322,10 +330,16 @@ public class Player implements Json.Serializable {
     public static class DamageResult {
         public final int damage;
         public final boolean isCritical;
+        public final boolean isDoubleAttack;
 
         public DamageResult(int damage, boolean isCritical) {
+            this(damage, isCritical, false);
+        }
+
+        public DamageResult(int damage, boolean isCritical, boolean isDoubleAttack) {
             this.damage = damage;
             this.isCritical = isCritical;
+            this.isDoubleAttack = isDoubleAttack;
         }
     }
 
@@ -335,7 +349,17 @@ public class Player implements Json.Serializable {
         int totalAttack = getAttack();  // Use getAttack() to include equipment bonuses
         int baseDamage = totalAttack + (int)(Math.random() * 3) - 1; // -1 to +1 variance
         int finalDamage = isCrit ? baseDamage * 3 : baseDamage;
-        return new DamageResult(finalDamage, isCrit);
+
+        // Check for double attack
+        boolean isDoubleAttack = inventory.hasDoubleAttack();
+
+        // If double attack, multiply damage by 2
+        if (isDoubleAttack) {
+            finalDamage *= 2;
+            GameLogger.logInfo("Double attack triggered! Damage multiplied by 2.");
+        }
+
+        return new DamageResult(finalDamage, isCrit, isDoubleAttack);
     }
 
     public DamageResult calculateSkillDamage(SkillType skill) {
@@ -348,24 +372,42 @@ public class Player implements Json.Serializable {
                 damageMultiplier = 1.0f;
                 break;
             case SKILL1:
-                damageMultiplier = 1.4f;  // Increased from 1.3f
+                // Dark Silk Face Slap - 1.2x ATK
+                damageMultiplier = 1.2f;
+                GameLogger.logInfo("Skill 1 using ATK: " + getAttack() + " (base: " + attack +
+                                  ", bonus: " + (getAttack() - attack) + ")");
                 break;
             case SKILL2:
-                damageMultiplier = 1.8f;  // Increased from 1.6f
-                break;
+                // Silk Scratch of Salvation - healing skill
+                // Return 0 damage since this is a healing skill
+                return new DamageResult(0, false, false);
             case SKILL3:
-                damageMultiplier = 2.3f;  // Increased from 2.0f
+                // Duckfoot Knot from Heaven - 2.6x ATK + defense buff
+                damageMultiplier = 2.6f;
+                GameLogger.logInfo("Skill 3 using ATK: " + getAttack() + " (base: " + attack +
+                                  ", bonus: " + (getAttack() - attack) + ")");
                 break;
             case SKILL4:
-                damageMultiplier = 2.8f;  // Increased from 2.5f
-                break;
+                // Sai-Oua Silk Wrap - defensive skill with healing
+                // Return 0 damage since this is mainly a buff skill
+                return new DamageResult(0, false, false);
             case SKILL5:
-                damageMultiplier = 3.5f;  // Increased from 3.0f
+                // Lamphun Blade: Piip Slash Supreme - 4.0x ATK
+                damageMultiplier = 4.0f;
+                GameLogger.logInfo("Skill 5 using ATK: " + getAttack() + " (base: " + attack +
+                                  ", bonus: " + (getAttack() - attack) + ")");
                 break;
             case SKILL6:
-                // Improved ultimate scaling
-                float mpRatio = (float)mpBeforeConsume / maxMP;
-                damageMultiplier = 3.0f + (mpRatio * 4.0f);  // Changed from 2.0f + (mpRatio * 3.0f)
+                // Silk End - I Am Cosmic Weave: 3.0 * MP * ATK - UNCAPPED TRUE FINAL ATTACK
+                // Use all MP with no effective limit
+                int effectiveMp = mpBeforeConsume;
+                // Calculate multiplier based on all MP used (3.0 * MP/100)
+                float mpMultiplier = 3.0f * effectiveMp / 10.0f;
+                // No cap - let it scale to the maximum possible value
+                // Final damage multiplier
+                damageMultiplier = mpMultiplier;
+                GameLogger.logInfo("Silk End ultimate attack using ATK: " + getAttack() + ", MP: " + effectiveMp +
+                                  ", Uncapped Multiplier: " + mpMultiplier);
                 break;
             default:
                 damageMultiplier = 1.0f;
@@ -373,7 +415,11 @@ public class Player implements Json.Serializable {
 
         DamageResult baseResult = calculateDamage();
         int modifiedDamage = (int)(baseResult.damage * damageMultiplier);
-        return new DamageResult(modifiedDamage, baseResult.isCritical);
+
+        // Double attack only applies to BASIC attacks, not to skills
+        boolean isDoubleAttack = skill == SkillType.BASIC ? baseResult.isDoubleAttack : false;
+
+        return new DamageResult(modifiedDamage, baseResult.isCritical, isDoubleAttack);
     }
 
     public String getSkillMessage(SkillType skill, int damage, Enemy currentEnemy) {
@@ -381,17 +427,21 @@ public class Player implements Json.Serializable {
             case BASIC:
                 return "You dealt " + damage + " damage to " + currentEnemy.getName() + "!";
             case SKILL1:
-                return "Your Quick Strike dealt " + damage + " damage to " + currentEnemy.getName() + "!";
+                return "Your Dark Silk Face Slap dealt " + damage + " damage to " + currentEnemy.getName() + "!";
             case SKILL2:
-                return "Your Power Slash dealt " + damage + " damage to " + currentEnemy.getName() + "!";
+                // Silk Scratch of Salvation - healing skill
+                int healAmount = (int)(getMaxHP() * 0.2);
+                return "You cast Silk Scratch of Salvation and healed yourself for " + healAmount + " HP!";
             case SKILL3:
-                return "Your Blade Dance dealt " + damage + " damage to " + currentEnemy.getName() + "!";
+                return "Your Duckfoot Knot from Heaven dealt " + damage + " damage to " + currentEnemy.getName() + " and increased your DEF by 50 for 2 turns!";
             case SKILL4:
-                return "Your Shadow Strike dealt " + damage + " damage to " + currentEnemy.getName() + "!";
+                // Sai-Oua Silk Wrap - defensive skill with healing
+                int healAmount2 = (int)(getMaxHP() * 0.35);
+                return "You cast Sai-Oua Silk Wrap, increasing your DEF by 100 and healing " + healAmount2 + " HP!";
             case SKILL5:
-                return "Your Dragon Fang dealt " + damage + " damage to " + currentEnemy.getName() + "!";
+                return "Your Lamphun Blade: Piip Slash Supreme dealt " + damage + " damage to " + currentEnemy.getName() + "!";
             case SKILL6:
-                return "Your Ultimate Technique dealt " + damage + " damage to " + currentEnemy.getName() + "!";
+                return "Your Silk End - I Am Cosmic Weave unleashed the power of silk with " + damage + " massive damage to " + currentEnemy.getName() + "!";
             default:
                 return "You dealt " + damage + " damage to " + currentEnemy.getName() + "!";
         }
@@ -399,22 +449,28 @@ public class Player implements Json.Serializable {
 
     public String useSkillMessage(SkillType skill) {
         int mpCost = calculateMPCost(skill);
+        boolean isFree = hasFreeSkillCastAvailable();
+        String mpText = isFree ? "FREE!" : mpCost + " MP";
 
         switch (skill) {
             case BASIC:
                 return "You used Slash!";
             case SKILL1:
-                return "You cast Quick Slash using " + mpCost + " MP!";
+                return "You cast Dark Silk Face Slap using " + mpText + "!";
             case SKILL2:
-                return "You cast Power Slash using " + mpCost + " MP!";
+                return "You cast Silk Scratch of Salvation using " + mpText + "!";
             case SKILL3:
-                return "You cast Blade Dance using " + mpCost + " MP!";
+                return "You cast Duckfoot Knot from Heaven using " + mpText + "!";
             case SKILL4:
-                return "You cast Shadow Strike using " + mpCost + " MP!";
+                return "You cast Sai-Oua Silk Wrap using " + mpText + "!";
             case SKILL5:
-                return "You cast Dragon Fang using " + mpCost + " MP!";
+                return "You cast Lamphun Blade: Piip Slash Supreme using " + mpText + "!";
             case SKILL6:
-                return "You cast Ultimate Technique using all your MP (" + mpCost + " MP)!";
+                if (isFree) {
+                    return "You unleash Silk End - I Am Cosmic Weave for FREE!";
+                } else {
+                    return "You unleash Silk End - I Am Cosmic Weave using all your MP (" + mpCost + " MP)!";
+                }
             default:
                 return "You used Slash!";
         }
@@ -463,6 +519,47 @@ public class Player implements Json.Serializable {
         return skillSoundDurations[skillIndex];
     }
 
+    /**
+     * Plays only the sound for a specific skill without returning the duration.
+     * Used for double attack effects.
+     *
+     * @param skill The skill to play the sound for
+     */
+    public void playSkillSoundOnly(SkillType skill) {
+        float volume = 0.09f;
+        Sound soundToPlay;
+
+        switch (skill) {
+            case BASIC:
+                soundToPlay = basicAttackSound;
+                break;
+            case SKILL1:
+                soundToPlay = skill1Sound;
+                break;
+            case SKILL2:
+                soundToPlay = skill2Sound;
+                break;
+            case SKILL3:
+                soundToPlay = skill3Sound;
+                break;
+            case SKILL4:
+                soundToPlay = skill4Sound;
+                break;
+            case SKILL5:
+                soundToPlay = skill5Sound;
+                break;
+            case SKILL6:
+                soundToPlay = skill6Sound;
+                break;
+            default:
+                soundToPlay = basicAttackSound;
+        }
+
+        if (soundToPlay != null) {
+            soundToPlay.play(volume);
+        }
+    }
+
     public void takeDamage(int damage) {
         int totalDefense = getDefense(); // This includes base defense + equipment bonuses
         int baseDefense = defense; // Base defense without equipment
@@ -470,6 +567,42 @@ public class Player implements Json.Serializable {
 
         int actualDamage = Math.max(1, damage - (totalDefense / 2));
         currentHP = Math.max(0, currentHP - actualDamage);
+
+        // Apply thorn damage to enemy if the player has thorn equipment
+        float thornDamagePercent = inventory.getTotalThornDamage();
+        if (thornDamagePercent > 0 && ScreenManager.getCurrentScreen() instanceof CombatScene) {
+            CombatScene combatScene = (CombatScene) ScreenManager.getCurrentScreen();
+            int thornDamageAmount = (int)(actualDamage * thornDamagePercent);
+
+            if (thornDamageAmount > 0) {
+                GameLogger.logInfo("Thorn damage reflected: " + thornDamageAmount);
+                // Get the current enemy and apply damage silently
+                if (combatScene.getCurrentEnemy() != null) {
+                    Enemy enemy = combatScene.getCurrentEnemy();
+
+                    // Don't apply any thorn damage if enemy is already at 1 HP
+                    if (enemy.getCurrentHP() <= 1) {
+                        thornDamageAmount = 0;
+                        GameLogger.logInfo("Thorn damage canceled - enemy already at 1 HP");
+                    }
+                    // Otherwise limit thorn damage to prevent killing
+                    else if (enemy.getCurrentHP() <= thornDamageAmount) {
+                        thornDamageAmount = Math.max(1, enemy.getCurrentHP() - 1);
+                        GameLogger.logInfo("Thorn damage limited to prevent enemy death: " + thornDamageAmount);
+                    }
+
+                    // Only apply thorn damage and show numbers if there's actual damage to deal
+                    if (thornDamageAmount > 0) {
+                        enemy.damage(thornDamageAmount, false);
+                        // Create thorn damage number
+                        combatScene.createThornDamageNumber(thornDamageAmount);
+
+                        // Make the HP bar visible by updating and showing enemy HP
+                        combatScene.updateAndShowEnemyHP();
+                    }
+                }
+            }
+        }
 
         GameLogger.logInfo(String.format(
             "Player took %d damage (reduced from %d by defense %d = %d base + %d bonus), HP: %d/%d",
@@ -510,7 +643,6 @@ public class Player implements Json.Serializable {
             Player player = json.fromJson(Player.class, file.readString());
             player.initializeSprite();  // Re-initialize sprite after loading
             player.initializeSounds();  // Re-initialize sounds after loading
-            GameLogger.logInfo("Player data loaded successfully");
             return player;
         } catch (Exception e) {
             GameLogger.logError("Failed to load player data", e);
@@ -531,65 +663,61 @@ public class Player implements Json.Serializable {
         json.writeValue("defense", defense);
         json.writeValue("maxHP", maxHP);
         json.writeValue("currentHP", currentHP);
-        json.writeValue("unlockedSkills", unlockedSkills);
-        json.writeValue("currentSkill", currentSkill.name());
         json.writeValue("currentStage", currentStage);
         json.writeValue("gold", gold);
+        json.writeValue("unlockedSkills", unlockedSkills);
+        json.writeValue("currentSkill", currentSkill);
         json.writeValue("inventory", inventory);
-        // Save boss tracking
+        // Boss tracking
         json.writeValue("boss1Defeated", boss1Defeated);
         json.writeValue("boss2Defeated", boss2Defeated);
         json.writeValue("boss3Defeated", boss3Defeated);
         json.writeValue("boss4Defeated", boss4Defeated);
         json.writeValue("boss5Defeated", boss5Defeated);
+
+        // We don't serialize the BuffManager since it's transient and contains
+        // only temporary effects that are reset when the game loads
     }
 
     @Override
     public void read(Json json, JsonValue jsonData) {
-        name = jsonData.getString("name");
-        level = jsonData.getInt("level");
-        exp = jsonData.getInt("exp");
-        mp = jsonData.getInt("mp");
-        maxMP = jsonData.getInt("maxMP");
-        attack = jsonData.getInt("attack");
-        critRate = jsonData.getFloat("critRate");
-        defense = jsonData.getInt("defense");
-        maxHP = jsonData.getInt("maxHP");
-        currentHP = jsonData.getInt("currentHP");
-
-        // Handle skill data
-        unlockedSkills = json.readValue("unlockedSkills", boolean[].class, jsonData);
-        if (unlockedSkills == null || unlockedSkills.length != SkillType.values().length) {
-            // Initialize if missing or invalid
-            initializeSkills();
-        } else {
-            // Ensure BASIC is always unlocked
-            unlockedSkills[SkillType.BASIC.ordinal()] = true;
-        }
-
-        // Read current skill, default to BASIC if not found
-        String skillName = jsonData.getString("currentSkill", "BASIC");
-        try {
-            currentSkill = SkillType.valueOf(skillName);
-            if (!isSkillUnlocked(currentSkill)) {
-                currentSkill = SkillType.BASIC;
-            }
-        } catch (IllegalArgumentException e) {
-            currentSkill = SkillType.BASIC;
-        }
-
-        // Read the new fields with default values if not found
+        name = jsonData.getString("name", "CHARA");
+        level = jsonData.getInt("level", 1);
+        exp = jsonData.getInt("exp", 0);
+        mp = jsonData.getInt("mp", 20);
+        maxMP = jsonData.getInt("maxMP", 20);
+        attack = jsonData.getInt("attack", 12);
+        critRate = jsonData.getFloat("critRate", 0.1f);
+        defense = jsonData.getInt("defense", 10);
+        maxHP = jsonData.getInt("maxHP", 20);
+        currentHP = jsonData.getInt("currentHP", maxHP);
         currentStage = jsonData.getInt("currentStage", 1);
         gold = jsonData.getInt("gold", 0);
 
-        // Read boss tracking status with default values if not found
+        // Read skill unlocks
+        JsonValue unlockedSkillsValue = jsonData.get("unlockedSkills");
+        if (unlockedSkillsValue != null) {
+            unlockedSkills = json.readValue(boolean[].class, unlockedSkillsValue);
+        } else {
+            initializeSkills(); // Create default skills if not in save
+        }
+
+        // Read current skill
+        JsonValue currentSkillValue = jsonData.get("currentSkill");
+        if (currentSkillValue != null) {
+            currentSkill = json.readValue(SkillType.class, currentSkillValue);
+        } else {
+            currentSkill = SkillType.BASIC; // Default to basic attack
+        }
+
+        // Read boss tracking
         boss1Defeated = jsonData.getBoolean("boss1Defeated", false);
         boss2Defeated = jsonData.getBoolean("boss2Defeated", false);
         boss3Defeated = jsonData.getBoolean("boss3Defeated", false);
         boss4Defeated = jsonData.getBoolean("boss4Defeated", false);
         boss5Defeated = jsonData.getBoolean("boss5Defeated", false);
 
-        // Read inventory or create a new one if not found
+        // Read inventory
         JsonValue inventoryValue = jsonData.get("inventory");
         if (inventoryValue != null) {
             inventory = json.readValue(Inventory.class, inventoryValue);
@@ -600,6 +728,7 @@ public class Player implements Json.Serializable {
         // Initialize non-serialized components
         initializeSprite();
         initializeSounds();
+        this.buffManager = new BuffManager(this); // Create a fresh BuffManager
     }
 
     // Getters and Setters
@@ -608,19 +737,42 @@ public class Player implements Json.Serializable {
     public int getExp() { return exp; }
     public int getMP() { return mp; }
     public int getAttack() {
-        return attack + inventory.getTotalAttackBonus();
+        ensureBuffManagerExists();
+        int baseAttack = attack;
+        // Apply percentage bonus first to base stat
+        float percentBonus = inventory.getTotalAttackPercentBonus();
+        int percentBonusAmount = (int)(baseAttack * percentBonus);
+        // Add flat bonuses and buffs
+        return baseAttack + percentBonusAmount + inventory.getTotalAttackBonus() + buffManager.getAttackBuff();
     }
     public float getCritRate() {
-        return critRate + inventory.getTotalCritRateBonus();
+        ensureBuffManagerExists();
+        return critRate + inventory.getTotalCritRateBonus() + buffManager.getCritRateBuff();
     }
     public int getDefense() {
-        return defense + inventory.getTotalDefenseBonus();
+        ensureBuffManagerExists();
+        int baseDefense = defense;
+        // Apply percentage bonus first to base stat
+        float percentBonus = inventory.getTotalDefensePercentBonus();
+        int percentBonusAmount = (int)(baseDefense * percentBonus);
+        // Add flat bonuses and buffs
+        return baseDefense + percentBonusAmount + inventory.getTotalDefenseBonus() + buffManager.getDefenseBuff();
     }
     public int getMaxMP() {
-        return maxMP + inventory.getTotalMaxMPBonus();
+        int baseMaxMP = maxMP;
+        // Apply percentage bonus first to base stat
+        float percentBonus = inventory.getTotalMaxMPPercentBonus();
+        int percentBonusAmount = (int)(baseMaxMP * percentBonus);
+        // Add flat bonuses
+        return baseMaxMP + percentBonusAmount + inventory.getTotalMaxMPBonus();
     }
     public int getMaxHP() {
-        return maxHP + inventory.getTotalMaxHPBonus();
+        int baseMaxHP = maxHP;
+        // Apply percentage bonus first to base stat
+        float percentBonus = inventory.getTotalMaxHPPercentBonus();
+        int percentBonusAmount = (int)(baseMaxHP * percentBonus);
+        // Add flat bonuses
+        return baseMaxHP + percentBonusAmount + inventory.getTotalMaxHPBonus();
     }
     public int getCurrentHP() { return currentHP; }
     public Sprite getSprite() { return sprite; }
@@ -739,18 +891,34 @@ public class Player implements Json.Serializable {
     }
 
     public boolean hasEnoughMPForSkill(SkillType skill) {
-        if (skill == SkillType.SKILL6) {
-            // Ultimate skill requires more than 50% of max MP
-            return mp > (maxMP / 2);
-        } else {
-            // Other skills use normal MP cost check
-            int mpCost = calculateMPCost(skill);
-            return mp >= mpCost;
+        if (skill == null) {
+            return true;
         }
+
+        // If free skill cast is available, any skill can be cast
+        if (freeSkillCastAvailable) {
+            return true;
+        }
+
+        int mpCost = calculateMPCost(skill);
+
+        if (skill == SkillType.SKILL6) {
+            // Ultimate skill requires atleast 50% MP
+            return mp >= maxMP * 0.5f;
+        }
+
+        return mp >= mpCost;
     }
 
     public void consumeMPForSkill(SkillType skill) {
         mpBeforeConsume = mp;
+
+        // If free skill cast is available, use it instead of consuming MP
+        if (freeSkillCastAvailable) {
+            useFreeSkillCast();
+            return;
+        }
+
         int mpCost = calculateMPCost(skill);
         decreaseMP(mpCost);
     }
@@ -770,6 +938,24 @@ public class Player implements Json.Serializable {
         return currentSkill.getDisplayName();
     }
 
+    /**
+     * Get the display name for a specific skill
+     * @param skill The skill to get the display name for
+     * @return The display name of the skill
+     */
+    public String getSkillDisplayName(SkillType skill) {
+        return skill.getDisplayName();
+    }
+
+    /**
+     * Get the MP cost for a specific skill
+     * @param skill The skill to get the MP cost for
+     * @return The MP cost of the skill
+     */
+    public int getSkillMPCost(SkillType skill) {
+        return calculateMPCost(skill);
+    }
+
     public void regenMP() {
         float regenAmount = BASE_MP_REGEN + (level - 1) * MP_REGEN_LEVEL_SCALING;
         mp = (int) Math.min(mp + regenAmount, getMaxMP());
@@ -782,6 +968,12 @@ public class Player implements Json.Serializable {
 
     public void setCurrentStage(int currentStage) {
         this.currentStage = currentStage;
+
+        // Check if this stage change should unlock any skills
+        checkStageUnlocks();
+
+        // Save player data after updating stage
+        saveToFile();
     }
 
     public int getGold() {
@@ -869,6 +1061,301 @@ public class Player implements Json.Serializable {
             default:
                 GameLogger.logError("Invalid boss number: " + bossNumber, null);
         }
+
+        // Check if this boss defeat unlocks any skills
+        checkBossDefeatSkillUnlocks(bossNumber);
+    }
+
+    /**
+     * Check if defeating a specific boss unlocks any skills
+     * @param bossNumber The boss number that was defeated
+     */
+    private void checkBossDefeatSkillUnlocks(int bossNumber) {
+        // Boss on 30th floor unlocks Silk Scratch of Salvation (Skill 2)
+        if (bossNumber == 3 && !isSkillUnlocked(SkillType.SKILL2)) {
+            unlockSkill(SkillType.SKILL2);
+            GameLogger.logInfo("Silk Scratch of Salvation unlocked after defeating boss on 30th floor!");
+        }
+
+        // Boss on 20th floor unlocks Sai-Oua Silk Wrap (Skill 4)
+        if (bossNumber == 2 && !isSkillUnlocked(SkillType.SKILL4)) {
+            unlockSkill(SkillType.SKILL4);
+            GameLogger.logInfo("Sai-Oua Silk Wrap unlocked after defeating boss on 20th floor!");
+        }
+
+        // Boss on 40th floor unlocks Lamphun Blade: Piip Slash Supreme (Skill 5)
+        if (bossNumber == 4 && !isSkillUnlocked(SkillType.SKILL5)) {
+            unlockSkill(SkillType.SKILL5);
+            GameLogger.logInfo("Lamphun Blade: Piip Slash Supreme unlocked after defeating boss on 40th floor!");
+        }
+
+        // Boss on 50th floor unlocks Silk End - I Am Cosmic Weave (Skill 6)
+        if (bossNumber == 5 && !isSkillUnlocked(SkillType.SKILL6)) {
+            unlockSkill(SkillType.SKILL6);
+            GameLogger.logInfo("Silk End - I Am Cosmic Weave unlocked after defeating boss on 50th floor!");
+        }
+    }
+
+    /**
+     * Update buffs between turns
+     */
+    public boolean updateBuffs() {
+        if (buffManager != null) {
+            return buffManager.updateBuffs();
+        }
+        return false;
+    }
+
+    /**
+     * Checks if the player has Death Defiance from their equipped accessory
+     * @return true if the player has Death Defiance
+     */
+    public boolean hasDeathDefiance() {
+        return inventory.hasDeathDefiance();
+    }
+
+    /**
+     * Add a temporary stat buff to the player
+     */
+    public void addStatBuff(BuffManager.StatType statType, int amount, int duration) {
+        if (buffManager != null) {
+            buffManager.addBuff(statType, amount, duration);
+        }
+    }
+
+    /**
+     * Clear all temporary buffs
+     */
+    public void clearBuffs() {
+        if (buffManager != null) {
+            buffManager.clearBuffs();
+        }
+    }
+
+    /**
+     * Initialize the buff manager if it doesn't exist
+     */
+    public void ensureBuffManagerExists() {
+        if (buffManager == null) {
+            buffManager = new BuffManager(this);
+        }
+    }
+
+    public void fullHeal() {
+        currentHP = getMaxHP();
+        GameLogger.logInfo("Player fully healed: " + currentHP + "/" + getMaxHP());
+    }
+
+    public void fullRestore() {
+        fullHeal();
+        mp = getMaxMP();
+        GameLogger.logInfo("Player fully restored HP and MP: " + currentHP + "/" + getMaxHP() + ", " + mp + "/" + getMaxMP());
+    }
+
+    /**
+     * Creates a deep snapshot of the player's current state that can be used for restoration
+     * @return A new Player object containing a copy of the player's current state
+     */
+    public Player createSnapshot() {
+        try {
+            // Create a new player
+            Player snapshot = new Player();
+
+            // Copy basic stats
+            snapshot.name = this.name;
+            snapshot.level = this.level;
+            snapshot.exp = this.exp;
+            snapshot.attack = this.attack;
+            snapshot.defense = this.defense;
+            snapshot.maxHP = this.maxHP;
+            snapshot.currentHP = this.currentHP;
+            snapshot.maxMP = this.maxMP;
+            snapshot.mp = this.mp;
+            snapshot.critRate = this.critRate;
+            snapshot.currentStage = this.currentStage;
+            snapshot.gold = this.gold;
+
+            // Copy boss defeat status
+            snapshot.boss1Defeated = this.boss1Defeated;
+            snapshot.boss2Defeated = this.boss2Defeated;
+            snapshot.boss3Defeated = this.boss3Defeated;
+            snapshot.boss4Defeated = this.boss4Defeated;
+            snapshot.boss5Defeated = this.boss5Defeated;
+
+            // Copy skill data
+            snapshot.unlockedSkills = new boolean[this.unlockedSkills.length];
+            System.arraycopy(this.unlockedSkills, 0, snapshot.unlockedSkills, 0, this.unlockedSkills.length);
+            snapshot.currentSkill = this.currentSkill;
+
+            // Create a copy of the inventory (serialize and deserialize for deep copy)
+            Json json = new Json();
+            json.setOutputType(JsonWriter.OutputType.json);
+            String inventoryJson = json.toJson(this.inventory);
+            snapshot.inventory = json.fromJson(Inventory.class, inventoryJson);
+
+            // Initialize transient fields
+            snapshot.initializeSprite();
+            snapshot.initializeSounds();
+
+            // Initialize and copy buffs if they exist
+            snapshot.ensureBuffManagerExists();
+            if (this.buffManager != null) {
+                for (BuffManager.StatBuff buff : this.buffManager.getActiveBuffs()) {
+                    snapshot.buffManager.addBuff(
+                        buff.getType(),
+                        buff.getAmount(),
+                        buff.getRemainingTurns()
+                    );
+                }
+            }
+
+            return snapshot;
+        } catch (Exception e) {
+            GameLogger.logError("Failed to create player snapshot", e);
+            return null;
+        }
+    }
+
+    /**
+     * Restores player state from a snapshot
+     * @param snapshot The player snapshot to restore from
+     */
+    public void restoreFromSnapshot(Player snapshot) {
+        if (snapshot == null) {
+            GameLogger.logError("Cannot restore from null snapshot", null);
+            return;
+        }
+
+        try {
+            // Restore basic stats
+            this.name = snapshot.name;
+            this.level = snapshot.level;
+            this.exp = snapshot.exp;
+            this.attack = snapshot.attack;
+            this.defense = snapshot.defense;
+            this.maxHP = snapshot.maxHP;
+            this.currentHP = snapshot.currentHP;
+            this.maxMP = snapshot.maxMP;
+            this.mp = snapshot.mp;
+            this.critRate = snapshot.critRate;
+            this.currentStage = snapshot.currentStage;
+            this.gold = snapshot.gold;
+
+            // Restore boss defeat status
+            this.boss1Defeated = snapshot.boss1Defeated;
+            this.boss2Defeated = snapshot.boss2Defeated;
+            this.boss3Defeated = snapshot.boss3Defeated;
+            this.boss4Defeated = snapshot.boss4Defeated;
+            this.boss5Defeated = snapshot.boss5Defeated;
+
+            // Restore skill data
+            this.unlockedSkills = new boolean[snapshot.unlockedSkills.length];
+            System.arraycopy(snapshot.unlockedSkills, 0, this.unlockedSkills, 0, snapshot.unlockedSkills.length);
+            this.currentSkill = snapshot.currentSkill;
+
+            // Restore inventory (serialize and deserialize for deep copy)
+            Json json = new Json();
+            json.setOutputType(JsonWriter.OutputType.json);
+            String inventoryJson = json.toJson(snapshot.inventory);
+            this.inventory = json.fromJson(Inventory.class, inventoryJson);
+
+            // Clear and restore buffs
+            this.ensureBuffManagerExists();
+            this.buffManager.clearBuffs();
+            for (BuffManager.StatBuff buff : snapshot.buffManager.getActiveBuffs()) {
+                this.buffManager.addBuff(
+                    buff.getType(),
+                    buff.getAmount(),
+                    buff.getRemainingTurns()
+                );
+            }
+
+//            GameLogger.logInfo("Player state restored from snapshot");
+        } catch (Exception e) {
+            GameLogger.logError("Failed to restore player from snapshot", e);
+        }
+    }
+
+    /**
+     * Checks if the player will perform a double attack with the given skill.
+     * This depends on whether the player has a weapon with double attack capability.
+     * Only applies to basic attacks, not skills.
+     *
+     * @param skill The skill being used
+     * @return true if this will be a double attack
+     */
+    public boolean willPerformDoubleAttack(SkillType skill) {
+        // Only basic attacks can have double attack
+        if (skill != SkillType.BASIC) {
+            return false;
+        }
+
+        // Check if the player's weapon has double attack capability
+        return inventory.hasDoubleAttack();
+    }
+
+    /**
+     * Remove a specific stat buff with a given amount
+     * @param statType The type of stat buff to remove
+     * @param amount The amount to match and remove
+     */
+    public void removeStatBuff(BuffManager.StatType statType, int amount) {
+        if (buffManager != null) {
+            // We'll need to check each buff and find the one matching this type and amount
+            Array<BuffManager.StatBuff> activeBuffs = buffManager.getActiveBuffs();
+            BuffManager.StatBuff buffToRemove = null;
+
+            // Look for any buff that matches this type and amount
+            for (BuffManager.StatBuff buff : activeBuffs) {
+                if (buff.getType() == statType && buff.getAmount() == amount) {
+                    buffToRemove = buff;
+                    break;
+                }
+            }
+
+            // If we found a matching buff, remove it
+            if (buffToRemove != null) {
+                buffManager.removeBuff(buffToRemove);
+                GameLogger.logInfo("Removed " + statType + " buff of " + amount);
+            }
+        }
+    }
+
+    // Add a new method to handle special skill effects
+    public void applySkillEffects(SkillType skill) {
+        switch (skill) {
+            case SKILL2:
+                // Silk Scratch of Salvation - Heal 20% of Max HP
+                int healAmount = (int)(getMaxHP() * 0.2);
+                GameLogger.logInfo("Skill 2 healing: " + healAmount + " HP (20% of max HP: " + getMaxHP() +
+                                  ", base max HP: " + maxHP + ")");
+                heal(healAmount);
+                break;
+            case SKILL3:
+                // Duckfoot Knot from Heaven - Increase defense by 50 for 2 turns
+                addStatBuff(BuffManager.StatType.DEFENSE, 50, 2);
+                break;
+            case SKILL4:
+                // Sai-Oua Silk Wrap - Increase defense by 100 and heal 35% of Max HP for 1 turn
+                addStatBuff(BuffManager.StatType.DEFENSE, 100, 1);
+                int healAmount2 = (int)(getMaxHP() * 0.35);
+                GameLogger.logInfo("Skill 4 healing: " + healAmount2 + " HP (35% of max HP: " + getMaxHP() +
+                                  ", base max HP: " + maxHP + ")");
+                heal(healAmount2);
+                break;
+            default:
+                // No additional effects for other skills
+                break;
+        }
+    }
+
+    // Modify this method to check for unlocking skills based on the new requirements
+    public void checkSkillUnlocks() {
+        // No level-based unlocks in the new spec except Duckfoot Knot from Heaven at level 12
+        if (level >= 12 && !isSkillUnlocked(SkillType.SKILL3)) {
+            unlockSkill(SkillType.SKILL3);
+            GameLogger.logInfo("Duckfoot Knot from Heaven unlocked!");
+        }
     }
 
     // Helper method to check if a boss is defeated by boss number
@@ -888,5 +1375,30 @@ public class Player implements Json.Serializable {
                 GameLogger.logError("Invalid boss number: " + bossNumber, null);
                 return false;
         }
+    }
+
+    /**
+     * Checks if the current stage unlocks any skills
+     */
+    private void checkStageUnlocks() {
+        // Dark Silk Face Slap unlocks at stage 10
+        if (currentStage >= 10 && !isSkillUnlocked(SkillType.SKILL1)) {
+            unlockSkill(SkillType.SKILL1);
+            GameLogger.logInfo("Dark Silk Face Slap unlocked after reaching stage 10!");
+        }
+    }
+
+    // Add these new methods for free skill cast functionality
+    public boolean hasFreeSkillCastAvailable() {
+        return freeSkillCastAvailable;
+    }
+
+    public void resetFreeSkillCast() {
+        // Called at the start of a battle to reset the availability
+        freeSkillCastAvailable = inventory.hasFreeSkillCast();
+    }
+
+    public void useFreeSkillCast() {
+        freeSkillCastAvailable = false;
     }
 }

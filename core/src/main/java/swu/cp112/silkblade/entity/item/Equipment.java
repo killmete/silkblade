@@ -35,9 +35,29 @@ public class Equipment implements Json.Serializable, Cloneable {
     private int maxMPBonus;
     private float critRateBonus;
     
+    // Percentage-based bonuses (0.05f = 5%, 0.20f = 20%, etc.)
+    private float maxHPPercentBonus;
+    private float maxMPPercentBonus;
+    private float attackPercentBonus;
+    private float defensePercentBonus;
+    
+    // Special effects
+    private boolean hasDoubleAttack; // For weapons: chance to attack twice
+    private float thornDamage; // For armor: percentage of damage reflected back to attacker
+    private boolean hasDeathDefiance; // For accessories: grants a one-time cheat death ability per combat
+    private boolean hasFreeSkillCast; // Grants a one-time free skill cast per battle (no MP cost)
+    
     public Equipment() {
         // Default constructor for JSON deserialization
         this.tier = ItemTier.NORMAL; // Default tier
+        this.maxHPPercentBonus = 0f;
+        this.maxMPPercentBonus = 0f;
+        this.attackPercentBonus = 0f;
+        this.defensePercentBonus = 0f;
+        this.hasDoubleAttack = false;
+        this.thornDamage = 0f;
+        this.hasDeathDefiance = false;
+        this.hasFreeSkillCast = false;
     }
     
     public Equipment(String id, String name, String description, EquipmentType type) {
@@ -51,6 +71,14 @@ public class Equipment implements Json.Serializable, Cloneable {
         this.maxHPBonus = 0;
         this.maxMPBonus = 0;
         this.critRateBonus = 0;
+        this.maxHPPercentBonus = 0f;
+        this.maxMPPercentBonus = 0f;
+        this.attackPercentBonus = 0f;
+        this.defensePercentBonus = 0f;
+        this.hasDoubleAttack = false;
+        this.thornDamage = 0f;
+        this.hasDeathDefiance = false;
+        this.hasFreeSkillCast = false;
     }
     
     // Getters
@@ -64,6 +92,14 @@ public class Equipment implements Json.Serializable, Cloneable {
     public int getMaxHPBonus() { return maxHPBonus; }
     public int getMaxMPBonus() { return maxMPBonus; }
     public float getCritRateBonus() { return critRateBonus; }
+    public float getMaxHPPercentBonus() { return maxHPPercentBonus; }
+    public float getMaxMPPercentBonus() { return maxMPPercentBonus; }
+    public float getAttackPercentBonus() { return attackPercentBonus; }
+    public float getDefensePercentBonus() { return defensePercentBonus; }
+    public boolean hasDoubleAttack() { return hasDoubleAttack; }
+    public float getThornDamage() { return thornDamage; }
+    public boolean hasDeathDefiance() { return hasDeathDefiance; }
+    public boolean hasFreeSkillCast() { return hasFreeSkillCast; }
     
     // Setters (builder pattern)
     public Equipment withTier(ItemTier tier) {
@@ -93,6 +129,46 @@ public class Equipment implements Json.Serializable, Cloneable {
     
     public Equipment withCritRateBonus(float critRateBonus) {
         this.critRateBonus = critRateBonus;
+        return this;
+    }
+    
+    public Equipment withMaxHPPercentBonus(float percentBonus) {
+        this.maxHPPercentBonus = percentBonus;
+        return this;
+    }
+    
+    public Equipment withMaxMPPercentBonus(float percentBonus) {
+        this.maxMPPercentBonus = percentBonus;
+        return this;
+    }
+    
+    public Equipment withAttackPercentBonus(float percentBonus) {
+        this.attackPercentBonus = percentBonus;
+        return this;
+    }
+    
+    public Equipment withDefensePercentBonus(float percentBonus) {
+        this.defensePercentBonus = percentBonus;
+        return this;
+    }
+    
+    public Equipment withDoubleAttack(boolean hasDoubleAttack) {
+        this.hasDoubleAttack = hasDoubleAttack;
+        return this;
+    }
+    
+    public Equipment withThornDamage(float thornDamage) {
+        this.thornDamage = thornDamage;
+        return this;
+    }
+    
+    public Equipment withDeathDefiance(boolean hasDeathDefiance) {
+        this.hasDeathDefiance = hasDeathDefiance;
+        return this;
+    }
+    
+    public Equipment withFreeSkillCast(boolean hasFreeSkillCast) {
+        this.hasFreeSkillCast = hasFreeSkillCast;
         return this;
     }
     
@@ -133,6 +209,14 @@ public class Equipment implements Json.Serializable, Cloneable {
             this.maxHPBonus = template.maxHPBonus;
             this.maxMPBonus = template.maxMPBonus;
             this.critRateBonus = template.critRateBonus;
+            this.maxHPPercentBonus = template.maxHPPercentBonus;
+            this.maxMPPercentBonus = template.maxMPPercentBonus;
+            this.attackPercentBonus = template.attackPercentBonus;
+            this.defensePercentBonus = template.defensePercentBonus;
+            this.hasDoubleAttack = template.hasDoubleAttack;
+            this.thornDamage = template.thornDamage;
+            this.hasDeathDefiance = template.hasDeathDefiance;
+            this.hasFreeSkillCast = template.hasFreeSkillCast;
         } else {
             // Handle case where item ID is not found in the database
             this.name = "Unknown Item";

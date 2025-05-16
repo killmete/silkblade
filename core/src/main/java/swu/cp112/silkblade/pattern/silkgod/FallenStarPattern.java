@@ -15,7 +15,7 @@ import java.util.List;
 
 public class FallenStarPattern implements EnemyAttackPattern {
     private static final AttackPatternConfig CONFIG = new AttackPatternConfig(
-        5, 10, 1.0f, 0.45f, 25, 500f, 250f, Color.WHITE, false,
+        4,  7, 1.0f, 0.45f, 25, 500f, 250f, Color.WHITE, false,
         "Swarm of stars fall from heaven, exploding into shower of brilliance.", 4.25f
     );
 

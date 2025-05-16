@@ -18,7 +18,7 @@ import swu.cp112.silkblade.pattern.EnemyAttackPattern;
  */
 public class RotatingStarPattern implements EnemyAttackPattern {
     private static final AttackPatternConfig CONFIG = new AttackPatternConfig(
-        3, 6, 1.75f, 0.75f, 20, 790f, 400f, Color.CYAN, false,
+        3, 6, 1.75f, 0.75f, 12, 790f, 400f, Color.CYAN, false,
         "Stars spawning around, briefly rotating before locks on position."
     );
 

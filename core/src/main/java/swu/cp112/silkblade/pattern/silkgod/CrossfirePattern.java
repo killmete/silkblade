@@ -15,7 +15,7 @@ import swu.cp112.silkblade.pattern.EnemyAttackPattern;
 
 public class CrossfirePattern implements EnemyAttackPattern {
     private static final AttackPatternConfig CONFIG = new AttackPatternConfig(
-        3, 5, 1f, 0.09f,
+        4, 8, 1f, 0.09f,
         35, 600f, 500f, Color.WHITE, false,
         "Bullets fire continuously in horizontal and vertical lines", 2.5f
     );

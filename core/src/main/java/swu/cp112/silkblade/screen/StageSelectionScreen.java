@@ -10,10 +10,12 @@ import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
+import com.badlogic.gdx.graphics.g2d.GlyphLayout;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
 import swu.cp112.silkblade.core.Main;
 import swu.cp112.silkblade.entity.combat.Player;
+import swu.cp112.silkblade.entity.enemy.*;
 import swu.cp112.silkblade.entity.enemy.silkgod.DemoEnemy;
 import swu.cp112.silkblade.screen.transition.ScreenTransition;
 import swu.cp112.silkblade.util.GameLogger;
@@ -38,6 +40,7 @@ public class StageSelectionScreen implements Screen {
         static final float LEFT_STAGE_MARGIN = 130;
         static final float FONT_SCALE = 2f;
         static final float STAGE_FONT_SCALE = 1.5f;
+        static final float BOSS_FONT_SCALE = 1.8f;
         static final float TOTAL_STAGES = 50;
 
         // Colors
@@ -47,7 +50,12 @@ public class StageSelectionScreen implements Screen {
         static final Color AVAILABLE_COLOR = Color.WHITE;
         static final Color LOCKED_COLOR = Color.GRAY;
         static final Color BOSS_COLOR = Color.RED;
+        static final Color BOSS_GLOW_COLOR = new Color(1f, 0.5f, 0f, 1f); // Orange glow
         static final Color BACKGROUND_COLOR = Color.BLACK;
+
+        // Boss text animation
+        static final float BOSS_ANIMATION_SPEED = 3f; // Speed of the animation
+        static final float BOSS_CHAR_OFFSET_MAX = 3f; // Max vertical offset for characters
     }
 
     /**
@@ -92,6 +100,28 @@ public class StageSelectionScreen implements Screen {
     private int unlockedStages = 10; // For demonstration, first 10 stages are unlocked
     private int scrollOffset = 0;
     private boolean inputEnabled = true;
+    private float animationTime = 0f;
+    private GlyphLayout glyphLayout;
+
+    // Static property to track which stage the player is currently challenging
+    private static int currentChallengingStage = 0;
+
+    /**
+     * Returns the stage that the player is currently challenging
+     * @return the current challenging stage number
+     */
+    public static int getCurrentChallengingStage() {
+        return currentChallengingStage;
+    }
+
+    /**
+     * Sets the stage that the player is currently challenging
+     * @param stageNumber the stage number being challenged
+     */
+    public static void setCurrentChallengingStage(int stageNumber) {
+        currentChallengingStage = stageNumber;
+        GameLogger.logInfo("Player is now challenging Stage " + stageNumber);
+    }
 
     public StageSelectionScreen(Game game) {
         this.game = game;
@@ -100,6 +130,7 @@ public class StageSelectionScreen implements Screen {
 
         this.batch = initializeGraphics();
         this.font = initializeFont();
+        this.glyphLayout = new GlyphLayout();
 
         this.selectSound = initializeSound();
         // Keep for future reference but comment out
@@ -142,6 +173,10 @@ public class StageSelectionScreen implements Screen {
     @Override
     public void render(float delta) {
         clearScreen();
+
+        // Update animation time
+        animationTime += delta;
+
         drawScreen();
         if (inputEnabled && !ScreenTransition.isTransitioning()) {
             handleInput();
@@ -203,18 +238,19 @@ public class StageSelectionScreen implements Screen {
         // Save original font scale
         float originalScale = font.getData().scaleX;
 
-        // Use smaller scale for stages
-        font.getData().setScale(DisplayConfig.STAGE_FONT_SCALE);
-
-        // Set appropriate color
+        // Set appropriate color and scale
         if (isSelected) {
             font.setColor(DisplayConfig.SELECTED_COLOR);
+            font.getData().setScale(isBossStage ? DisplayConfig.BOSS_FONT_SCALE : DisplayConfig.STAGE_FONT_SCALE);
         } else if (!isUnlocked) {
             font.setColor(DisplayConfig.LOCKED_COLOR);
+            font.getData().setScale(isBossStage ? DisplayConfig.BOSS_FONT_SCALE * 0.9f : DisplayConfig.STAGE_FONT_SCALE);
         } else if (isBossStage) {
             font.setColor(DisplayConfig.BOSS_COLOR);
+            font.getData().setScale(DisplayConfig.BOSS_FONT_SCALE);
         } else {
             font.setColor(DisplayConfig.AVAILABLE_COLOR);
+            font.getData().setScale(DisplayConfig.STAGE_FONT_SCALE);
         }
 
         String stageText = MenuConfig.STAGE_PREFIX + stageNumber;
@@ -222,10 +258,75 @@ public class StageSelectionScreen implements Screen {
             stageText = "> " + stageText;
         }
 
-        font.draw(batch, stageText, x, y);
+        // Add special effect for boss stages
+        if (isBossStage && isUnlocked) {
+            drawStaggeredBossText(stageText, x, y);
+        } else {
+            font.draw(batch, stageText, x, y);
+        }
 
         // Restore original font scale
         font.getData().setScale(originalScale);
+    }
+
+    /**
+     * Draws boss stage text with a staggering effect where each character moves up and down
+     * slightly out of sync with the others
+     */
+    private void drawStaggeredBossText(String text, float x, float y) {
+        float currentX = x;
+
+        // Draw a subtle glow/shadow effect behind text first
+        Color originalColor = font.getColor().cpy();
+        font.setColor(DisplayConfig.BOSS_GLOW_COLOR);
+
+        // Measure the text width to center the glow
+        glyphLayout.setText(font, text);
+        float textWidth = glyphLayout.width;
+
+        // Draw the glow slightly offset and larger
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            String charStr = String.valueOf(c);
+
+            // Calculate a unique vertical offset for this character based on its position
+            float phase = (i * 0.3f + animationTime * DisplayConfig.BOSS_ANIMATION_SPEED) % (2 * (float)Math.PI);
+            float vertOffset = (float) Math.sin(phase) * DisplayConfig.BOSS_CHAR_OFFSET_MAX;
+
+            // Measure the width of this character
+            glyphLayout.setText(font, charStr);
+            float charWidth = glyphLayout.width;
+
+            // Draw the glow version slightly offset
+            font.draw(batch, charStr, currentX - 1, y + vertOffset - 1);
+
+            currentX += charWidth;
+        }
+
+        // Reset position for the main text
+        currentX = x;
+
+        // Now draw the main text with the staggering effect
+        font.setColor(originalColor);
+
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            String charStr = String.valueOf(c);
+
+            // Calculate a unique vertical offset for this character based on its position
+            float phase = (i * 0.3f + animationTime * DisplayConfig.BOSS_ANIMATION_SPEED) % (2 * (float)Math.PI);
+            float vertOffset = (float) Math.sin(phase) * DisplayConfig.BOSS_CHAR_OFFSET_MAX;
+
+            // Measure the width of this character
+            glyphLayout.setText(font, charStr);
+            float charWidth = glyphLayout.width;
+
+            // Draw this character with its own offset
+            font.draw(batch, charStr, currentX, y + vertOffset);
+
+            // Move to the next character position
+            currentX += charWidth;
+        }
     }
 
     /**
@@ -286,7 +387,7 @@ public class StageSelectionScreen implements Screen {
     private void handleSelectionInput() {
         if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER)) {
             if (selectedStage <= unlockedStages) {
-                startStage(selectedStage);
+                startChallengeForStage(selectedStage);
             } else {
                 // Play error sound or feedback for locked stage
                 selectSound.play(0.5f);
@@ -304,18 +405,146 @@ public class StageSelectionScreen implements Screen {
         }
     }
 
-    private void startStage(int stageNumber) {
-        GameLogger.logInfo("Starting stage: " + stageNumber);
+    /**
+     * Processes stage selection and initiates combat with the appropriate enemy
+     * @param stageNumber the selected stage number
+     */
+    private void startChallengeForStage(int stageNumber) {
+        // We need to set the challenging stage for patterns to access it
+        currentChallengingStage = stageNumber;
 
-        // For now, all stages use the demo enemy
-        // In a full implementation, enemies would be selected based on the stage
-        inputEnabled = false;
-        game.setScreen(new ScreenTransition(
-            game,
-            this,
-            new CombatScene(game, new DemoEnemy()),
-            ScreenTransition.TransitionType.FADE_TO_WHITE
-        ));
+        if (shouldEncounterSecretBoss(stageNumber)) {
+            GameLogger.logInfo("Player encountered the secret boss instead of normal enemy!");
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, new DemoEnemy()),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        // Use SilkWraith for stages 1-9
+        } else if (stageNumber >= 1 && stageNumber <= 9) {
+            // Create a SilkWraith with the appropriate stage number
+            SilkWraith wraith = new SilkWraith(stageNumber);
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, wraith),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        // Use SilkGuardian for stage 10 (boss stage)
+        } else if (stageNumber == 10) {
+            // Create the stage 10 boss - Silk Guardian
+            SilkGuardian guardian = new SilkGuardian();
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, guardian),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        // Use SilkWeaver for stages 11-19
+        } else if (stageNumber >= 11 && stageNumber <= 19) {
+            // Create a SilkWeaver with the appropriate stage number
+            SilkWeaver weaver = new SilkWeaver(stageNumber);
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, weaver),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        // Use GoldenCocoon for stage 20 (boss stage)
+        } else if (stageNumber == 20) {
+            // Create the stage 20 boss - Golden Cocoon
+            GoldenCocoon cocoon = new GoldenCocoon();
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, cocoon),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        // Use SilkCicada for stages 21-29
+        } else if (stageNumber >= 21 && stageNumber <= 29) {
+            // Create a SilkCicada with the appropriate stage number
+            SilkCicada cicada = new SilkCicada(stageNumber);
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, cicada),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        } else if (stageNumber == 30) {
+            // Create the stage 30 boss - Threadmancer
+            Threadmancer thread = new Threadmancer();
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, thread),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        // Use SpiritOfTheLoom for stages 31-39
+        } else if (stageNumber >= 31 && stageNumber <= 39) {
+            // Create a SpiritOfTheLoom with the appropriate stage number
+            SpiritOfTheLoom loom = new SpiritOfTheLoom(stageNumber);
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, loom),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        // Use CrimsonSericulture for stage 40 (boss stage)
+        } else if (stageNumber == 40) {
+            // Create the stage 40 boss - Crimson Sericulture
+            CrimsonSericulture sericulture = new CrimsonSericulture();
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, sericulture),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        // Use HundredSilkOgre for stages 41-49
+        } else if (stageNumber >= 41 && stageNumber <= 49) {
+            // Create a HundredSilkOgre with the appropriate stage number
+            HundredSilkOgre ogre = new HundredSilkOgre(stageNumber);
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, ogre),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        // Use SilkRevenant for stage 50 (boss stage)
+        } else if (stageNumber == 50) {
+            // Create the stage 50 boss - Silk Revenant
+            SilkRevenant revenant = new SilkRevenant();
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, revenant),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        } else {
+            // Use DemoEnemy for other stages (temporary)
+            game.setScreen(new ScreenTransition(
+                game,
+                this,
+                new CombatScene(game, new DemoEnemy()),
+                ScreenTransition.TransitionType.FADE_TO_WHITE
+            ));
+        }
+    }
+
+    /**
+     * Determines if the player should encounter the secret boss (DemoEnemy) instead of the regular stage enemy
+     * Only applies when replaying stages the player has already cleared, with a 1% chance
+     * @param stageNumber the stage being played
+     * @return true if the player should encounter the secret boss
+     */
+    private boolean shouldEncounterSecretBoss(int stageNumber) {
+        // Only apply to stages the player has already cleared (current stage > selected stage)
+        if (player.getCurrentStage() > stageNumber) {
+            // 1% chance to encounter secret boss when replaying a cleared stage
+            float randomValue = (float) Math.random();
+            return randomValue <= 0.01f; // 1% chance
+        }
+        return false;
     }
 
     /**
@@ -343,21 +572,38 @@ public class StageSelectionScreen implements Screen {
         // if (music != null) {
         //     music.stop();
         // }
-        
+
         // No need to stop the shared music
     }
 
     @Override
     public void show() {
-        // Keep for future reference but comment out
-        // if (music != null && !music.isPlaying()) {
-        //     music.play();
-        // }
-        
-        // If returning from combat, restart music from beginning
+        // If returning from combat, ensure player state is up to date
         if (CombatScene.returningFromCombat) {
+            // Reload the player to ensure we have the latest state
+            // This ensures that any state restoration (like running away or dying)
+            // is properly reflected in the stage selection screen
+            unlockedStages = player.getCurrentStage();
+            
+            // Set the selected stage to the stage the player was just in
+            if (currentChallengingStage > 0) {
+                selectedStage = currentChallengingStage;
+                
+                // Adjust scroll if necessary to ensure the selected stage is visible
+                int stagesPerRow = DisplayConfig.STAGES_PER_ROW;
+                int selectedRow = (selectedStage - 1) / stagesPerRow;
+                if (selectedRow < scrollOffset) {
+                    scrollOffset = selectedRow;
+                } else if (selectedRow >= scrollOffset + DisplayConfig.VISIBLE_ROWS) {
+                    scrollOffset = selectedRow - DisplayConfig.VISIBLE_ROWS + 1;
+                }
+            }
+    
+            // Restart music from beginning
             swu.cp112.silkblade.core.Main.restartBackgroundMusic();
-            CombatScene.returningFromCombat = false; // Reset flag
+
+            // Reset flag
+            CombatScene.returningFromCombat = false;
         } else {
             // Otherwise just make sure it's playing
             swu.cp112.silkblade.core.Main.resumeBackgroundMusic();

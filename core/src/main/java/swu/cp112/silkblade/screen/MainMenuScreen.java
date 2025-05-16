@@ -8,6 +8,7 @@ import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.OrthographicCamera;
+import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.utils.ScreenUtils;
@@ -24,11 +25,11 @@ public class MainMenuScreen implements Screen {
      */
     private static final class DisplayConfig {
         // Layout
-        static final float TITLE_Y_POSITION = 200;
-        static final float MENU_START_Y = 350;
-        static final float MENU_ITEM_SPACING = 65;
-        static final float MENU_X_POSITION = 0.2f;
-        static final float FONT_SCALE = 2f;
+        static final float TITLE_Y_POSITION = 50;
+        static final float TITLE_SCALE = 0.4f;
+        static final float MENU_START_Y = 450;
+        static final float MENU_ITEM_SPACING = 50; // Smaller spacing
+        static final float FONT_SCALE = 1.5f; // Smaller font
 
         // Colors
         static final Color SELECTED_COLOR = Color.YELLOW;
@@ -40,20 +41,20 @@ public class MainMenuScreen implements Screen {
      * Menu configuration
      */
     private static final class MenuConfig {
-        static final String TITLE = "Welcome to Silk Blade!";
-        static final String[] OPTIONS = {"Start Game", "Options", "Quit"};
+        static final String[] OPTIONS = {"START", "OPTIONS", "QUIT"};
         static final String SELECTED_PREFIX = "> ";
         static final String UNSELECTED_PREFIX = "  ";
     }
 
     /**
-     * Audio configuration
+     * Asset configuration
      */
-    private static final class AudioConfig {
+    private static final class AssetConfig {
         static final float MUSIC_VOLUME = 0.05f;
         static final String FONT_PATH = "fonts/DTM.fnt";
         static final String MUSIC_PATH = "music/main_menu.mp3";
         static final String SELECT_SOUND_PATH = "sounds/select.wav";
+        static final String TITLE_IMAGE_PATH = "title.png";
     }
 
     /**
@@ -64,6 +65,7 @@ public class MainMenuScreen implements Screen {
     private final OrthographicCamera camera;
     private final SpriteBatch batch;
     private final BitmapFont font;
+    private final Texture titleTexture;
 
     /**
      * Audio components
@@ -85,6 +87,7 @@ public class MainMenuScreen implements Screen {
 
         this.batch = initializeGraphics();
         this.font = initializeFont();
+        this.titleTexture = new Texture(Gdx.files.internal(AssetConfig.TITLE_IMAGE_PATH));
 
         this.selectSound = initializeSound();
         // Keep for future reference but comment out
@@ -99,19 +102,19 @@ public class MainMenuScreen implements Screen {
     }
 
     private BitmapFont initializeFont() {
-        BitmapFont font = new BitmapFont(Gdx.files.internal(AudioConfig.FONT_PATH));
+        BitmapFont font = new BitmapFont(Gdx.files.internal(AssetConfig.FONT_PATH));
         font.setColor(DisplayConfig.DEFAULT_COLOR);
         font.getData().setScale(DisplayConfig.FONT_SCALE);
         return font;
     }
 
     private Sound initializeSound() {
-        return Gdx.audio.newSound(Gdx.files.internal(AudioConfig.SELECT_SOUND_PATH));
+        return Gdx.audio.newSound(Gdx.files.internal(AssetConfig.SELECT_SOUND_PATH));
     }
 
     // Keep for future reference but comment out
     // private Music initializeMusic() {
-    //     Music music = Gdx.audio.newMusic(Gdx.files.internal(AudioConfig.MUSIC_PATH));
+    //     Music music = Gdx.audio.newMusic(Gdx.files.internal(AssetConfig.MUSIC_PATH));
     //     music.setLooping(true);
     //     music.setVolume(AudioConfig.MUSIC_VOLUME);
     //     return music;
@@ -145,10 +148,14 @@ public class MainMenuScreen implements Screen {
     }
 
     private void drawTitle(float screenWidth, float screenHeight) {
-        font.setColor(DisplayConfig.DEFAULT_COLOR);
-        font.draw(batch, MenuConfig.TITLE,
-                 screenWidth * DisplayConfig.MENU_X_POSITION,
-                 screenHeight - DisplayConfig.TITLE_Y_POSITION);
+        float scaledWidth = titleTexture.getWidth() * DisplayConfig.TITLE_SCALE;
+        float scaledHeight = titleTexture.getHeight() * DisplayConfig.TITLE_SCALE;
+        float titleX = (screenWidth - scaledWidth) / 2; // Center horizontally
+        float titleY = screenHeight - DisplayConfig.TITLE_Y_POSITION;
+
+        batch.draw(titleTexture,
+                  titleX, titleY - scaledHeight, // Position
+                  scaledWidth, scaledHeight); // Size
     }
 
     private void drawMenuOptions(float screenWidth, float screenHeight) {
@@ -160,11 +167,14 @@ public class MainMenuScreen implements Screen {
 
     private void drawMenuItem(float screenWidth, float screenHeight, int index, boolean isSelected) {
         String prefix = isSelected ? MenuConfig.SELECTED_PREFIX : MenuConfig.UNSELECTED_PREFIX;
+        String menuText = prefix + MenuConfig.OPTIONS[index];
         font.setColor(isSelected ? DisplayConfig.SELECTED_COLOR : DisplayConfig.DEFAULT_COLOR);
 
+        float textWidth = font.getScaleX() * font.getData().getGlyph('A').width * menuText.length();
+        float xPosition = (screenWidth - textWidth) / 2; // Center horizontally
         float yPosition = screenHeight - DisplayConfig.MENU_START_Y - index * DisplayConfig.MENU_ITEM_SPACING;
-        font.draw(batch, prefix + MenuConfig.OPTIONS[index],
-                 screenWidth * DisplayConfig.MENU_X_POSITION, yPosition);
+
+        font.draw(batch, menuText, xPosition, yPosition);
     }
 
     /**
@@ -220,7 +230,14 @@ public class MainMenuScreen implements Screen {
     }
 
     private void openOptions() {
-        // Future implementation
+        inputEnabled = false;
+        selectedIndex = -1;
+        game.setScreen(new ScreenTransition(
+            game,
+            this,  // Current screen
+            new OptionsScreen(game),  // Next screen
+            ScreenTransition.TransitionType.CROSS_FADE
+        ));
     }
 
     /**
@@ -237,6 +254,7 @@ public class MainMenuScreen implements Screen {
     public void dispose() {
         batch.dispose();
         font.dispose();
+        titleTexture.dispose();
         // Keep for future reference but comment out
         // music.dispose();
         selectSound.dispose();
@@ -248,7 +266,7 @@ public class MainMenuScreen implements Screen {
         // if (music != null) {
         //     music.stop();
         // }
-        
+
         // No need to stop the shared music
     }
 
@@ -258,7 +276,7 @@ public class MainMenuScreen implements Screen {
         // if (music != null && !music.isPlaying()) {
         //     music.play();
         // }
-        
+
         // Make sure the shared music is playing
         swu.cp112.silkblade.core.Main.resumeBackgroundMusic();
     }

@@ -7,6 +7,7 @@ import swu.cp112.silkblade.util.GameLogger;
 import com.badlogic.gdx.Game;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.utils.viewport.FitViewport;
@@ -27,7 +28,7 @@ public class Main extends Game {
      * Audio configuration
      */
     private static final class AudioConfig {
-        static final float MUSIC_VOLUME = 0.05f;
+        static final float MUSIC_VOLUME = 0.15f;
         static final String MAIN_MUSIC_PATH = "music/main_menu.mp3";
     }
 
@@ -37,6 +38,13 @@ public class Main extends Game {
     private static OrthographicCamera camera;
     private static FitViewport viewport;
     private static Music backgroundMusic;
+    private static Game gameInstance;
+    
+    /**
+     * Audio settings
+     */
+    private static float musicVolume = AudioConfig.MUSIC_VOLUME;
+    private static float effectVolume = 0.7f;
 
     /**
      * Lifecycle methods
@@ -46,20 +54,23 @@ public class Main extends Game {
         try {
             GameLogger.logInfo("Initializing game...");
             
+            // Store reference to game instance
+            gameInstance = this;
+
             // Initialize core systems
             initializeGraphics();
             initializeItemDatabase();
             initializeAudio();
-            
+
             // Create save directory if it doesn't exist
             FileHandle saveDir = Gdx.files.local("save");
             if (!saveDir.exists()) {
                 saveDir.mkdirs();
             }
-            
+
             // Set initial screen
             setInitialScreen();
-            
+
             GameLogger.logInfo("Game initialized successfully");
         } catch (Exception e) {
             GameLogger.logError("Failed to initialize game", e);
@@ -113,7 +124,7 @@ public class Main extends Game {
         camera.position.set(viewport.getWorldWidth() / 2, viewport.getWorldHeight() / 2, 0);
         camera.update();
     }
-    
+
     /**
      * Initialize the item database to ensure items are loaded
      */
@@ -122,7 +133,7 @@ public class Main extends Game {
         ItemDatabase.getInstance(); // This initializes the singleton
         GameLogger.logInfo("Item database initialized");
     }
-    
+
     /**
      * Initialize global audio
      */
@@ -157,24 +168,31 @@ public class Main extends Game {
     }
     
     /**
+     * Returns the game instance
+     */
+    public static Game getGame() {
+        return gameInstance;
+    }
+
+    /**
      * Music management methods
      */
     public static Music getBackgroundMusic() {
         return backgroundMusic;
     }
-    
+
     public static void pauseBackgroundMusic() {
         if (backgroundMusic != null && backgroundMusic.isPlaying()) {
             backgroundMusic.pause();
         }
     }
-    
+
     public static void resumeBackgroundMusic() {
         if (backgroundMusic != null && !backgroundMusic.isPlaying()) {
             backgroundMusic.play();
         }
     }
-    
+
     /**
      * Restarts the background music from the beginning
      */
@@ -183,5 +201,37 @@ public class Main extends Game {
             backgroundMusic.stop();
             backgroundMusic.play();
         }
+    }
+    
+    /**
+     * Volume control methods
+     */
+    public static void setMusicVolume(float volume) {
+        musicVolume = volume;
+        if (backgroundMusic != null) {
+            backgroundMusic.setVolume(musicVolume);
+        }
+    }
+    
+    public static float getMusicVolume() {
+        return musicVolume;
+    }
+    
+    public static void setEffectVolume(float volume) {
+        effectVolume = volume;
+    }
+    
+    public static float getEffectVolume() {
+        return effectVolume;
+    }
+    
+    /**
+     * Plays a sound with the global effect volume
+     */
+    public static long playSound(Sound sound) {
+        if (sound != null) {
+            return sound.play(effectVolume);
+        }
+        return -1;
     }
 }

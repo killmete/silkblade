@@ -7,6 +7,7 @@ import com.badlogic.gdx.Screen;
 import com.badlogic.gdx.audio.Music;
 import com.badlogic.gdx.audio.Sound;
 import com.badlogic.gdx.graphics.Color;
+import com.badlogic.gdx.graphics.GL20;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
@@ -41,7 +42,7 @@ public class InventoryScreen implements Screen {
         static final float NAVIGATION_HELP_Y = 40;
         static final float LEFT_MARGIN = 80;
         static final float RIGHT_MARGIN = 640;
-        static final float EQUIPPED_ITEM_NAME_OFFSET = 250;
+        static final float EQUIPPED_ITEM_NAME_OFFSET = 100;
         static final float FONT_SCALE = 1.7f;
         static final float ITEM_FONT_SCALE = 1.3f;
         static final float STATS_FONT_SCALE = 1.1f;
@@ -64,6 +65,19 @@ public class InventoryScreen implements Screen {
         static final Color STATS_LABEL_COLOR = Color.LIGHT_GRAY;
         static final Color DESCRIPTION_BACKGROUND = new Color(0, 0, 0, 0.8f);
         static final Color SCROLL_INDICATOR_COLOR = Color.YELLOW;
+
+        // Panel configuration
+        static final float PANEL_PADDING = 20;
+        static final float PANEL_BORDER_THICKNESS = 3;
+        static final float EQUIPPED_PANEL_WIDTH = 500;
+        static final float EQUIPPED_PANEL_HEIGHT = 240;
+        static final float INVENTORY_PANEL_WIDTH = 550;
+        static final float INVENTORY_PANEL_HEIGHT = 530;
+        static final float STATS_PANEL_WIDTH = 500;
+        static final float STATS_PANEL_HEIGHT = 220;
+        static final float PANEL_Y_OFFSET = 30;
+        static final Color PANEL_BACKGROUND = new Color(0.1f, 0.1f, 0.2f, 0.8f);
+        static final Color PANEL_BORDER = new Color(0.5f, 0.5f, 0.7f, 1f);
     }
 
     /**
@@ -74,7 +88,7 @@ public class InventoryScreen implements Screen {
         static final String EQUIPPED_TITLE = "EQUIPPED";
         static final String ITEMS_TITLE = "ITEMS";
         static final String EMPTY_SLOT = "- Empty -";
-        static final String NAVIGATION_HELP = "Arrow Keys: Navigate | Enter: Equip/Use | E: Examine | C: Toggle for Combat | Esc: Back";
+        static final String NAVIGATION_HELP = "Arrow Keys: Navigate | Enter: Equip/Use | E: Examine | C: Mark for Combat | T: Throw Away | Esc: Back";
         static final float STAR_SIZE = 26f; // Size for star icon
         static final float STAR_X_OFFSET = 10f; // Small offset from the end of the name text
         static final float STAR_Y_OFFSET = 0f; // Vertical offset for star
@@ -125,6 +139,11 @@ public class InventoryScreen implements Screen {
     private String itemDescription = "";
     private boolean inputEnabled = true;
     private final com.badlogic.gdx.graphics.glutils.ShapeRenderer shapeRenderer;
+    
+    // Added for discard confirmation
+    private boolean showDiscardConfirmation = false;
+    private String confirmationMessage = "";
+    private float statusMessageTimer = 0f;
 
     private float genesisSineTime = 0;
 
@@ -254,6 +273,14 @@ public class InventoryScreen implements Screen {
         if (genesisSineTime > Math.PI * 2) {
             genesisSineTime -= Math.PI * 2;
         }
+        
+        // Update status message timer
+        if (statusMessageTimer > 0) {
+            statusMessageTimer -= delta;
+            if (statusMessageTimer <= 0) {
+                confirmationMessage = "";
+            }
+        }
 
         clearScreen();
         drawScreen();
@@ -271,6 +298,10 @@ public class InventoryScreen implements Screen {
         float screenHeight = viewport.getWorldHeight();
 
         batch.setProjectionMatrix(camera.combined);
+
+        // Draw panels first (before starting batch)
+        drawPanels(screenWidth, screenHeight);
+
         batch.begin();
 
         // Draw title
@@ -315,11 +346,90 @@ public class InventoryScreen implements Screen {
         if (examiningItem && !itemDescription.isEmpty()) {
             drawItemDescriptionBox(screenWidth, screenHeight);
         }
+        
+        // Draw discard confirmation if active
+        if (showDiscardConfirmation) {
+            drawDiscardConfirmation(screenWidth, screenHeight);
+        }
+        
+        // Draw status message if there is one
+        if (statusMessageTimer > 0 && confirmationMessage != null && !confirmationMessage.isEmpty()) {
+            font.setColor(Color.YELLOW);
+            layout.setText(font, confirmationMessage);
+            font.draw(batch, confirmationMessage,
+                    screenWidth / 2 - layout.width / 2,
+                    screenHeight / 2 - 50);
+        }
 
         // Reset font scale
         font.getData().setScale(originalScale);
 
         batch.end();
+    }
+
+    /**
+     * Draw all panels with backgrounds and borders
+     */
+    private void drawPanels(float screenWidth, float screenHeight) {
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        shapeRenderer.setProjectionMatrix(camera.combined);
+
+        // Draw player stats panel (bottom left)
+        float statsPanelX = DisplayConfig.LEFT_MARGIN - DisplayConfig.PANEL_PADDING;
+        float statsPanelY = screenHeight - DisplayConfig.PLAYER_STATS_START_Y - DisplayConfig.STATS_PANEL_HEIGHT + 20;
+        drawPanel(
+            statsPanelX,
+            statsPanelY,
+            DisplayConfig.STATS_PANEL_WIDTH,
+            DisplayConfig.STATS_PANEL_HEIGHT,
+            DisplayConfig.PANEL_BACKGROUND,
+            DisplayConfig.PANEL_BORDER
+        );
+
+        // Draw equipped items panel (top left) - adjusted to include section header
+        float equippedPanelX = DisplayConfig.LEFT_MARGIN - DisplayConfig.PANEL_PADDING;
+        float equippedPanelY = screenHeight - DisplayConfig.SECTION_TITLE_Y - DisplayConfig.EQUIPPED_PANEL_HEIGHT + 20; // Add vertical offset for section title
+        drawPanel(
+            equippedPanelX,
+            equippedPanelY,
+            DisplayConfig.EQUIPPED_PANEL_WIDTH,
+            DisplayConfig.EQUIPPED_PANEL_HEIGHT,
+            DisplayConfig.PANEL_BACKGROUND,
+            DisplayConfig.PANEL_BORDER
+        );
+
+        // Draw inventory items panel (right side) - adjusted to include section header
+        float inventoryPanelX = DisplayConfig.RIGHT_MARGIN - DisplayConfig.PANEL_PADDING;
+        float inventoryPanelY = screenHeight - DisplayConfig.SECTION_TITLE_Y - DisplayConfig.INVENTORY_PANEL_HEIGHT + 20; // Add vertical offset for section title
+        drawPanel(
+            inventoryPanelX,
+            inventoryPanelY,
+            DisplayConfig.INVENTORY_PANEL_WIDTH,
+            DisplayConfig.INVENTORY_PANEL_HEIGHT,
+            DisplayConfig.PANEL_BACKGROUND,
+            DisplayConfig.PANEL_BORDER
+        );
+
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+    }
+
+    /**
+     * Draw a single panel with background and border
+     */
+    private void drawPanel(float x, float y, float width, float height, Color backgroundColor, Color borderColor) {
+        // Draw panel background
+        shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(backgroundColor);
+        shapeRenderer.rect(x, y, width, height);
+        shapeRenderer.end();
+
+        // Draw panel border
+        Gdx.gl.glLineWidth(DisplayConfig.PANEL_BORDER_THICKNESS);
+        shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
+        shapeRenderer.setColor(borderColor);
+        shapeRenderer.rect(x, y, width, height);
+        shapeRenderer.end();
+        Gdx.gl.glLineWidth(1);
     }
 
     /**
@@ -444,7 +554,7 @@ public class InventoryScreen implements Screen {
 
         // Get equipped items
         Array<Equipment> equipped = inventory.getEquippedItems();
-        String[] slotNames = {"Weapon", "Armor", "Accessory"};
+        String[] slotNames = {"WPN", "ARM", "ACC"};
 
         for (int i = 0; i < slotNames.length; i++) {
             boolean isSelected = isLeftSide && i == selectedIndexLeft;
@@ -568,20 +678,20 @@ public class InventoryScreen implements Screen {
             while (headerIndex > 0 && !isHeader.get(headerIndex)) {
                 headerIndex--;
             }
-            
+
             // Only show header if it would take up at most one line of the visible area
             // This prevents the scrolling from always locking to headers
             if (headerIndex >= 0 && isHeader.get(headerIndex)) {
                 // If this is the first item in a category and we're near the top of the list,
                 // we can show the header, but don't force it otherwise
-                if (selectedAbsoluteIndex == headerIndex + 1 && 
+                if (selectedAbsoluteIndex == headerIndex + 1 &&
                     // Only do this if the header is just one position above current view
                     // or we're near the beginning of the list
                     (headerIndex == topItemIndex - 1 || headerIndex < 3)) {
                     topItemIndex = Math.max(0, headerIndex);
                 }
             }
-            
+
             // Standard visibility checks always take priority to keep selected item visible
             if (selectedAbsoluteIndex < topItemIndex) {
                 topItemIndex = selectedAbsoluteIndex;
@@ -687,15 +797,18 @@ public class InventoryScreen implements Screen {
         // Count number of lines in description (roughly estimate based on width)
         int numLines = (int)Math.ceil(descLayout.width / boxWidth) + itemDescription.split("\n").length;
         float lineHeight = descLayout.height * 1.4f; // Slightly reduced spacing (was 1.5f)
-        float boxHeight = lineHeight * (numLines + 4); // Add space for title and close text
-        boxHeight = Math.min(boxHeight, screenHeight * 0.65f); // Cap maximum height (reduced from 70%)
+        
+        // Calculate height with fixed padding at the bottom for close text 
+        float contentHeight = lineHeight * numLines + titleLayout.height + 60; // Add padding
+        float boxHeight = Math.max(contentHeight + closeLayout.height + 60, screenHeight * 0.3f); // Minimum height
+        boxHeight = Math.min(boxHeight, screenHeight * 0.75f); // Cap maximum height (increased from 65%)
 
         // Center the box on screen
         float boxX = (screenWidth - boxWidth) / 2;
         float boxY = (screenHeight - boxHeight) / 2;
 
         // Draw semi-transparent background
-        Gdx.gl.glEnable(Gdx.gl.GL_BLEND);
+        Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glLineWidth(5);
         shapeRenderer.setProjectionMatrix(camera.combined);
 
@@ -707,15 +820,23 @@ public class InventoryScreen implements Screen {
 
         // Draw outline with tier color instead of white
         shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
-        
+
         if (currentExaminedItemTier != null) {
             // Use tier color for the outline
             if (currentExaminedItemTier.isAnimated()) {
-                // For Genesis tier, create rainbow effect
-                float r = (float) Math.sin(genesisSineTime) * 0.5f + 0.5f;
-                float g = (float) Math.sin(genesisSineTime + 2.0f) * 0.5f + 0.5f;
-                float b = (float) Math.sin(genesisSineTime + 4.0f) * 0.5f + 0.5f;
-                shapeRenderer.setColor(r, g, b, 1f);
+                if (currentExaminedItemTier == swu.cp112.silkblade.entity.item.ItemTier.GENESIS) {
+                    // For Genesis tier, create blue-purple galaxy effect
+                    float r = (float) Math.abs(Math.sin(genesisSineTime * 0.5f)) * 0.3f + 0.3f; // limited red
+                    float g = (float) Math.abs(Math.sin(genesisSineTime * 0.7f)) * 0.2f + 0.1f; // very limited green
+                    float b = (float) Math.abs(Math.sin(genesisSineTime * 0.9f)) * 0.4f + 0.6f; // strong blue base
+                    shapeRenderer.setColor(r, g, b, 1f);
+                } else if (currentExaminedItemTier == swu.cp112.silkblade.entity.item.ItemTier.END) {
+                    // For END tier, create true rainbow effect
+                    float r = (float) Math.sin(genesisSineTime) * 0.5f + 0.5f;
+                    float g = (float) Math.sin(genesisSineTime + 2.0f) * 0.5f + 0.5f;
+                    float b = (float) Math.sin(genesisSineTime + 4.0f) * 0.5f + 0.5f;
+                    shapeRenderer.setColor(r, g, b, 1f);
+                }
             } else {
                 // For all other tiers, use the pre-defined color
                 Color tierColor = currentExaminedItemTier.getColor();
@@ -725,11 +846,11 @@ public class InventoryScreen implements Screen {
             // Fallback to white if tier is somehow null
             shapeRenderer.setColor(1, 1, 1, 1f);
         }
-        
+
         shapeRenderer.rect(boxX, boxY, boxWidth, boxHeight);
         shapeRenderer.end();
 
-        Gdx.gl.glDisable(Gdx.gl.GL_BLEND);
+        Gdx.gl.glDisable(GL20.GL_BLEND);
         Gdx.gl.glLineWidth(1);
         // Restart the batch for drawing text
         batch.begin();
@@ -740,8 +861,9 @@ public class InventoryScreen implements Screen {
                 screenWidth / 2 - titleLayout.width / 2,
                 boxY + boxHeight - 30);
 
-        // Draw actual description
+        // Draw actual description with a maximum height to prevent overflow
         font.setColor(DisplayConfig.DESCRIPTION_COLOR);
+        float maxDescHeight = boxHeight - 120; // Leave space for title and close text
         font.draw(batch, itemDescription,
                 boxX + 20,
                 boxY + boxHeight - 30 - titleLayout.height - 20, // Position below title with padding
@@ -749,11 +871,11 @@ public class InventoryScreen implements Screen {
                 1, // Align left
                 true); // Wrap
 
-        // Draw close instruction at bottom of box
+        // Draw close instruction at bottom of box with more padding
         font.setColor(DisplayConfig.NAVIGATION_COLOR);
         font.draw(batch, closeText,
                 screenWidth / 2 - closeLayout.width / 2,
-                boxY + 50);
+                boxY + 30); // Fixed position from bottom
     }
 
     /**
@@ -767,6 +889,12 @@ public class InventoryScreen implements Screen {
                 currentExaminedItemTier = null; // Reset the item tier
                 selectSound.play();
             }
+            return;
+        }
+        
+        // Handle discard confirmation if active
+        if (showDiscardConfirmation) {
+            handleDiscardConfirmation();
             return;
         }
 
@@ -811,6 +939,11 @@ public class InventoryScreen implements Screen {
             // Toggle combat selection for consumable items
             toggleCombatSelection();
         }
+        
+        if (Gdx.input.isKeyJustPressed(Input.Keys.T)) {
+            // Throw away / discard item
+            showDiscardPrompt();
+        }
 
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
             goBack();
@@ -834,7 +967,7 @@ public class InventoryScreen implements Screen {
         // Store original selection and scroll position
         int originalSelectedIndex = selectedIndexRight;
         int originalTopIndex = topItemIndex;
-        
+
         // Adjust selection
         selectedIndexRight += direction;
 
@@ -845,44 +978,44 @@ public class InventoryScreen implements Screen {
         if (selectedIndexRight >= totalItemCount) {
             selectedIndexRight = 0;
         }
-        
+
         // Always play sound before any early returns
         selectSound.play();
-        
+
         // Build the allRows data structure for accurate navigation
         Array<Object> allRows = new Array<>();
         Array<Boolean> isHeader = new Array<>();
         buildInventoryRows(allRows, isHeader);
-        
+
         // Find the absolute indices for both the previous and current selection
         int selectedAbsoluteIndex = -1;
         int previousAbsoluteIndex = -1;
-        findIndicesInAllRows(allRows, isHeader, items, consumables, originalSelectedIndex, selectedIndexRight, 
+        findIndicesInAllRows(allRows, isHeader, items, consumables, originalSelectedIndex, selectedIndexRight,
                             previousAbsoluteIndex, selectedAbsoluteIndex);
-        
+
         // Special case: if we're scrolling up in the same section and there's minimal items,
         // don't change the scroll position to avoid jumpiness
         if (direction < 0 && selectedAbsoluteIndex >= 0 && previousAbsoluteIndex >= 0) {
             // Check if we're moving within the same section by seeing if there's no header between the items
             boolean sameSection = true;
-            for (int i = Math.min(selectedAbsoluteIndex, previousAbsoluteIndex); 
+            for (int i = Math.min(selectedAbsoluteIndex, previousAbsoluteIndex);
                  i <= Math.max(selectedAbsoluteIndex, previousAbsoluteIndex); i++) {
                 if (i >= 0 && i < isHeader.size && isHeader.get(i)) {
                     sameSection = false;
                     break;
                 }
             }
-            
+
             // If we're in the same section and the currently selected item is still visible
             // with the current scroll position, don't change the scroll position
-            if (sameSection && selectedAbsoluteIndex >= originalTopIndex && 
+            if (sameSection && selectedAbsoluteIndex >= originalTopIndex &&
                 selectedAbsoluteIndex < originalTopIndex + DisplayConfig.MAX_VISIBLE_ITEMS) {
                 // Keep the original scroll position
                 topItemIndex = originalTopIndex;
                 return;
             }
         }
-        
+
         // If selectedAbsoluteIndex is valid, adjust scrolling with minimal movement
         if (selectedAbsoluteIndex != -1) {
             // When scrolling down, don't scroll until it's necessary
@@ -905,7 +1038,7 @@ public class InventoryScreen implements Screen {
                     topItemIndex = originalTopIndex;
                 }
             }
-            
+
             // If we wrapped around (from bottom to top)
             if (originalSelectedIndex > selectedIndexRight && direction < 0) {
                 // Jump to the end of the list for better user experience when wrapping
@@ -918,17 +1051,17 @@ public class InventoryScreen implements Screen {
             }
         }
     }
-    
+
     /**
      * Helper method to build the complete inventory rows data structure
      */
     private void buildInventoryRows(Array<Object> allRows, Array<Boolean> isHeader) {
         Array<Equipment> items = inventory.getInventoryItems();
         Array<ConsumableItem> consumables = inventory.getConsumableItems();
-        
+
         // Build allRows structure
         Equipment.EquipmentType lastType = null;
-        
+
         // Process equipment items first
         for (int i = 0; i < items.size; i++) {
             Equipment item = items.get(i);
@@ -956,7 +1089,7 @@ public class InventoryScreen implements Screen {
             }
         }
     }
-    
+
     /**
      * Helper method to find the absolute indices of selections in allRows
      */
@@ -967,15 +1100,15 @@ public class InventoryScreen implements Screen {
         // Find indices in allRows
         int originalItemCount = 0;
         int currentItemCount = 0;
-        
+
         for (int i = 0; i < allRows.size; i++) {
             if (!isHeader.get(i)) {
                 // This is an actual item, not a header
                 Object item = allRows.get(i);
-                
+
                 boolean isEquipment = item instanceof Equipment;
                 int itemIndex = -1;
-                
+
                 if (isEquipment) {
                     itemIndex = items.indexOf((Equipment)item, true);
                     if (itemIndex == originalIndex) previousAbsoluteIndex = i;
@@ -1011,7 +1144,7 @@ public class InventoryScreen implements Screen {
             // Save current scroll position and selected item
             int currentTopIndex = topItemIndex;
             String itemName = ((Equipment)selectedItem).getName();
-            
+
             // Equip the item
             Equipment item = (Equipment) selectedItem;
             Equipment previousItem = inventory.equipItem(item);
@@ -1036,20 +1169,20 @@ public class InventoryScreen implements Screen {
             int currentIndex = selectedIndexRight;
             int currentTopIndex = topItemIndex;
             boolean isLastOne = (itemQuantity == 1);
-            
+
             // Store nearby items to help maintain position after change
             String nextItemName = null;
             String prevItemName = null;
-            
+
             // Try to find adjacent items to use as reference points
             Array<Equipment> items = inventory.getInventoryItems();
             Array<ConsumableItem> consumables = inventory.getConsumableItems();
-            
+
             // Build item representation to find next/prev items
             Array<Object> allItems = new Array<>();
             for (Equipment equip : items) allItems.add(equip);
             for (ConsumableItem cons : consumables) allItems.add(cons);
-            
+
             if (allItems.size > 0) {
                 // Find the selected item's position
                 int posInAllItems = -1;
@@ -1061,7 +1194,7 @@ public class InventoryScreen implements Screen {
                         break;
                     }
                 }
-                
+
                 // If found, get adjacent items
                 if (posInAllItems >= 0) {
                     if (posInAllItems > 0) {
@@ -1072,7 +1205,7 @@ public class InventoryScreen implements Screen {
                             prevItemName = ((ConsumableItem)prevObj).getName();
                         }
                     }
-                    
+
                     if (posInAllItems < allItems.size - 1) {
                         Object nextObj = allItems.get(posInAllItems + 1);
                         if (nextObj instanceof Equipment) {
@@ -1094,10 +1227,13 @@ public class InventoryScreen implements Screen {
                     player.increaseMP(item.getEffectAmount());
                     useSound.setVolume(useSound.play(), 0.15f);
                     break;
-                case BUFF_ATK:
-                case BUFF_DEF:
-                    // Buffs not implemented yet
-                    selectSound.setVolume(selectSound.play(), 0.15f);
+                case FULL_HEAL:
+                    player.fullHeal();
+                    useSound.setVolume(useSound.play(), 0.15f);
+                    break;
+                case FULL_RESTORE:
+                    player.fullRestore();
+                    useSound.setVolume(useSound.play(), 0.15f);
                     break;
             }
 
@@ -1107,7 +1243,7 @@ public class InventoryScreen implements Screen {
 
             // Re-sort inventory after changes
             sortInventoryItems();
-            
+
             // Identify what will help us maintain position
             String targetItem = null;
             if (!isLastOne) {
@@ -1120,7 +1256,7 @@ public class InventoryScreen implements Screen {
                 // If no next item, try previous item
                 targetItem = prevItemName;
             }
-            
+
             // First try to select the appropriate item
             if (targetItem != null) {
                 findAndSelectItemByName(targetItem);
@@ -1132,12 +1268,12 @@ public class InventoryScreen implements Screen {
                 int totalItems = itemsAfter.size + consumablesAfter.size;
                 selectedIndexRight = Math.min(currentIndex, Math.max(0, totalItems - 1));
             }
-            
+
             // Now find the actual position of the selected item in the complete list
             Array<Object> allRows = new Array<>();
             Array<Boolean> isHeader = new Array<>();
             buildInventoryRows(allRows, isHeader);
-            
+
             int selectedAbsoluteIndex = -1;
             for (int i = 0; i < allRows.size; i++) {
                 if (!isHeader.get(i)) {
@@ -1165,12 +1301,12 @@ public class InventoryScreen implements Screen {
                     }
                 }
             }
-            
+
             // Now determine the best topItemIndex to maintain visual position
             // Try to keep the same items visible if possible
             if (selectedAbsoluteIndex >= 0) {
                 // Ideal case - try to keep the current scroll position
-                if (selectedAbsoluteIndex >= currentTopIndex && 
+                if (selectedAbsoluteIndex >= currentTopIndex &&
                     selectedAbsoluteIndex < currentTopIndex + DisplayConfig.MAX_VISIBLE_ITEMS) {
                     // We can keep the same scroll position
                     topItemIndex = currentTopIndex;
@@ -1268,20 +1404,20 @@ public class InventoryScreen implements Screen {
     private void unequipSelected() {
         // Save the current scroll position of inventory
         int currentTopIndex = topItemIndex;
-        
+
         Equipment.EquipmentType type = Equipment.EquipmentType.values()[selectedIndexLeft];
-        
+
         // Get the equipped item before unequipping to track its name
         Equipment equippedItem = inventory.getEquippedItems().get(type.ordinal());
         String itemName = equippedItem != null ? equippedItem.getName() : null;
-        
+
         if (inventory.unequipItem(type)) {
             equipSound.play();
             player.saveToFile();
 
             // Re-sort inventory after changes, and try to select the just-unequipped item
             updateAfterInventoryChangeWithPosition(currentTopIndex, itemName);
-            
+
             // Find and select the newly unequipped item if possible
             if (itemName != null) {
                 findAndSelectItemByName(itemName);
@@ -1302,17 +1438,51 @@ public class InventoryScreen implements Screen {
         if (item.getAttackBonus() != 0) {
             sb.append("Attack: ").append(formatBonus(item.getAttackBonus())).append("\n");
         }
+        if (item.getAttackPercentBonus() > 0) {
+            sb.append("Attack: ").append(formatPercentBonus(item.getAttackPercentBonus())).append("\n");
+        }
         if (item.getDefenseBonus() != 0) {
             sb.append("Defense: ").append(formatBonus(item.getDefenseBonus())).append("\n");
+        }
+        if (item.getDefensePercentBonus() > 0) {
+            sb.append("Defense: ").append(formatPercentBonus(item.getDefensePercentBonus())).append("\n");
         }
         if (item.getMaxHPBonus() != 0) {
             sb.append("Max HP: ").append(formatBonus(item.getMaxHPBonus())).append("\n");
         }
+        if (item.getMaxHPPercentBonus() > 0) {
+            sb.append("Max HP: ").append(formatPercentBonus(item.getMaxHPPercentBonus())).append("\n");
+        }
         if (item.getMaxMPBonus() != 0) {
             sb.append("Max MP: ").append(formatBonus(item.getMaxMPBonus())).append("\n");
         }
+        if (item.getMaxMPPercentBonus() > 0) {
+            sb.append("Max MP: ").append(formatPercentBonus(item.getMaxMPPercentBonus())).append("\n");
+        }
         if (item.getCritRateBonus() != 0) {
             sb.append("Crit Rate: ").append(formatPercentBonus(item.getCritRateBonus())).append("\n");
+        }
+
+        // Add special properties section if applicable
+        boolean hasSpecialProps = item.hasDoubleAttack() || item.getThornDamage() > 0 || item.hasDeathDefiance() || item.hasFreeSkillCast();
+        if (hasSpecialProps) {
+            sb.append("\nSpecial Properties:\n");
+
+            if (item.hasDoubleAttack()) {
+                sb.append("Double Attack: Strikes twice for double damage\n");
+            }
+
+            if (item.getThornDamage() > 0) {
+                sb.append("Thorn Damage: Returns ").append(formatPercentBonus(item.getThornDamage())).append(" damage to attacker\n");
+            }
+            
+            if (item.hasDeathDefiance()) {
+                sb.append("Death Defiance: Grants one-time survival when HP reaches 0 (per combat)\n");
+            }
+            
+            if (item.hasFreeSkillCast()) {
+                sb.append("Free Skill Cast: Allows casting any skill once per battle without MP cost\n");
+            }
         }
 
         itemDescription = sb.toString();
@@ -1325,7 +1495,37 @@ public class InventoryScreen implements Screen {
         sb.append(item.getDescription()).append("\n\n");
 
         sb.append("Effect: ").append(item.getEffect().getDescription()).append("\n");
-        sb.append("Value: ").append(item.getEffectAmount()).append("\n");
+
+        // Show "100%" for FULL_HEAL and FULL_RESTORE effects
+        if (item.getEffect() == ConsumableItem.ItemEffect.FULL_HEAL ||
+            item.getEffect() == ConsumableItem.ItemEffect.FULL_RESTORE) {
+            sb.append("Value: 100%\n");
+        } else {
+            sb.append("Value: ").append(item.getEffectAmount()).append("\n");
+        }
+        
+        // Secondary effect if any
+        if (item.getSecondaryEffect() != null) {
+            sb.append("\nSecondary Effect: ").append(item.getSecondaryEffect().getDescription());
+            if (item.getSecondaryEffect() != ConsumableItem.ItemEffect.FULL_HEAL &&
+                item.getSecondaryEffect() != ConsumableItem.ItemEffect.FULL_RESTORE) {
+                sb.append(" (").append(item.getSecondaryEffectAmount()).append(")");
+            } else {
+                sb.append(" (100%)");
+            }
+            sb.append("\n");
+        }
+
+        // Buffs if any
+        if (item.getBuffDuration() > 0) {
+            sb.append("\nBuffs (").append(item.getBuffDuration()).append(" turns):\n");
+            if (item.getBuffAtkAmount() > 0) {
+                sb.append("- ATK +").append(item.getBuffAtkAmount()).append("\n");
+            }
+            if (item.getBuffDefAmount() > 0) {
+                sb.append("- DEF +").append(item.getBuffDefAmount()).append("\n");
+            }
+        }
 
         if (inventory.isSelectedForCombat(item)) {
             sb.append("\nSelected for use in combat");
@@ -1340,7 +1540,8 @@ public class InventoryScreen implements Screen {
     }
 
     private String formatPercentBonus(float value) {
-        return (value > 0 ? "+" : "") + (int)(value * 100) + "%";
+        int percentValue = (int)(value * 100);
+        return "+" + percentValue + "%";
     }
 
     private void goBack() {
@@ -1422,18 +1623,18 @@ public class InventoryScreen implements Screen {
             topItemIndex = 0;
             return;
         }
-        
+
         // Try to keep topItemIndex close to what it was before if possible
         topItemIndex = Math.min(previousTopIndex, Math.max(0, totalItems - DisplayConfig.MAX_VISIBLE_ITEMS));
-        
+
         // Ensure selectedIndexRight is valid
         selectedIndexRight = Math.min(selectedIndexRight, totalItems - 1);
-        
+
         // If we specified a target item to keep visible, find it
         if (targetItemName != null) {
             // Look for the equipment or consumable with the target name
             int targetIndex = -1;
-            
+
             // Check equipment items
             for (int i = 0; i < items.size; i++) {
                 if (items.get(i).getName().equals(targetItemName)) {
@@ -1441,7 +1642,7 @@ public class InventoryScreen implements Screen {
                     break;
                 }
             }
-            
+
             // If not found in equipment, check consumables
             if (targetIndex == -1) {
                 for (int i = 0; i < consumables.size; i++) {
@@ -1451,7 +1652,7 @@ public class InventoryScreen implements Screen {
                     }
                 }
             }
-            
+
             // If we found the target item, make sure it's visible
             if (targetIndex != -1) {
                 // If the item is above the visible area, scroll up
@@ -1481,11 +1682,19 @@ public class InventoryScreen implements Screen {
         }
 
         if (tier.isAnimated()) {
-            // For Genesis tier, create rainbow effect
-            float r = (float) Math.sin(genesisSineTime) * 0.5f + 0.5f;
-            float g = (float) Math.sin(genesisSineTime + 2.0f) * 0.5f + 0.5f;
-            float b = (float) Math.sin(genesisSineTime + 4.0f) * 0.5f + 0.5f;
-            font.setColor(r, g, b, 1);
+            if (tier == swu.cp112.silkblade.entity.item.ItemTier.GENESIS) {
+                // For Genesis tier, create blue-purple galaxy effect
+                float r = (float) Math.abs(Math.sin(genesisSineTime * 0.5f)) * 0.3f + 0.3f; // limited red
+                float g = (float) Math.abs(Math.sin(genesisSineTime * 0.7f)) * 0.2f + 0.1f; // very limited green
+                float b = (float) Math.abs(Math.sin(genesisSineTime * 0.9f)) * 0.4f + 0.6f; // strong blue base
+                font.setColor(r, g, b, 1);
+            } else if (tier == swu.cp112.silkblade.entity.item.ItemTier.END) {
+                // For END tier, create true rainbow effect
+                float r = (float) Math.sin(genesisSineTime) * 0.5f + 0.5f;
+                float g = (float) Math.sin(genesisSineTime + 2.0f) * 0.5f + 0.5f;
+                float b = (float) Math.sin(genesisSineTime + 4.0f) * 0.5f + 0.5f;
+                font.setColor(r, g, b, 1);
+            }
         } else {
             // For all other tiers, use the pre-defined color
             font.setColor(tier.getColor());
@@ -1514,5 +1723,140 @@ public class InventoryScreen implements Screen {
 
         // Reset color to avoid affecting other sprites
         batch.setColor(1, 1, 1, 1);
+    }
+
+    /**
+     * Show a confirmation prompt before discarding the selected item
+     */
+    private void showDiscardPrompt() {
+        // Only allow discarding items in the inventory (right side), not equipped items
+        if (isLeftSide) return;
+        
+        Object selectedItem = getSelectedInventoryItem();
+        if (selectedItem == null) return;
+        
+        String itemName;
+        if (selectedItem instanceof Equipment) {
+            itemName = ((Equipment)selectedItem).getName();
+        } else if (selectedItem instanceof ConsumableItem) {
+            itemName = ((ConsumableItem)selectedItem).getName();
+        } else {
+            return;
+        }
+        
+        showDiscardConfirmation = true;
+        confirmationMessage = "Throw away " + itemName + "? (Y/N)";
+        selectSound.play();
+    }
+    
+    /**
+     * Handle keyboard input for the discard confirmation prompt
+     */
+    private void handleDiscardConfirmation() {
+        if (Gdx.input.isKeyJustPressed(Input.Keys.Y)) {
+            // User confirmed discard
+            discardSelectedItem();
+            showDiscardConfirmation = false;
+        } 
+        else if (Gdx.input.isKeyJustPressed(Input.Keys.N) || 
+                 Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
+            // User canceled discard
+            showDiscardConfirmation = false;
+            confirmationMessage = "";
+            selectSound.play();
+        }
+    }
+    
+    /**
+     * Discard the currently selected inventory item
+     */
+    private void discardSelectedItem() {
+        if (isLeftSide) return; // Can't discard equipped items directly
+        
+        Object selectedItem = getSelectedInventoryItem();
+        if (selectedItem == null) return;
+        
+        if (selectedItem instanceof Equipment) {
+            // Remove equipment from inventory
+            Equipment item = (Equipment) selectedItem;
+            inventory.removeFromInventory(item);
+            equipSound.play();
+            
+            confirmationMessage = item.getName() + " discarded";
+            statusMessageTimer = 2.0f;
+        } 
+        else if (selectedItem instanceof ConsumableItem) {
+            // Remove consumable from inventory
+            ConsumableItem item = (ConsumableItem) selectedItem;
+            
+            // Remove the item (only remove one if there's more than one)
+            if (item.getQuantity() > 1) {
+                item.decreaseQuantity(1);
+                confirmationMessage = "1 " + item.getName() + " discarded";
+            } else {
+                inventory.removeConsumableItem(item);
+                confirmationMessage = item.getName() + " discarded";
+            }
+            
+            useSound.play();
+            statusMessageTimer = 2.0f;
+        }
+        
+        // Save the game to persist the change
+        player.saveToFile();
+        
+        // May need to adjust selection index if we removed the last item
+        if (inventory.getInventoryItems().size + inventory.getConsumableItems().size == 0) {
+            // No items left
+            selectedIndexRight = 0;
+        } else if (selectedIndexRight >= inventory.getInventoryItems().size + inventory.getConsumableItems().size) {
+            // Selected index is now out of bounds
+            selectedIndexRight = inventory.getInventoryItems().size + inventory.getConsumableItems().size - 1;
+        }
+    }
+    
+    /**
+     * Draw the discard confirmation prompt
+     */
+    private void drawDiscardConfirmation(float screenWidth, float screenHeight) {
+        // End batch before using shapeRenderer
+        batch.end();
+        
+        // Get font dimensions
+        font.getData().setScale(DisplayConfig.ITEM_FONT_SCALE);
+        com.badlogic.gdx.graphics.g2d.GlyphLayout layout = new com.badlogic.gdx.graphics.g2d.GlyphLayout(font, confirmationMessage);
+        
+        // Calculate box dimensions
+        float boxWidth = layout.width + 80;
+        float boxHeight = layout.height + 60;
+        float boxX = (screenWidth - boxWidth) / 2;
+        float boxY = (screenHeight - boxHeight) / 2;
+        
+        // Draw semi-transparent background
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        shapeRenderer.setProjectionMatrix(camera.combined);
+        
+        // Draw box background
+        shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(0, 0, 0, 0.9f);
+        shapeRenderer.rect(boxX, boxY, boxWidth, boxHeight);
+        shapeRenderer.end();
+        
+        // Draw box border
+        shapeRenderer.begin(com.badlogic.gdx.graphics.glutils.ShapeRenderer.ShapeType.Line);
+        shapeRenderer.setColor(1, 1, 0, 1); // Yellow border
+        shapeRenderer.rect(boxX, boxY, boxWidth, boxHeight);
+        shapeRenderer.end();
+        
+        Gdx.gl.glDisable(GL20.GL_BLEND);
+        
+        // Restart the batch for drawing text
+        batch.begin();
+        
+        // Draw confirmation message
+        font.setColor(Color.WHITE);
+        font.draw(batch, confirmationMessage, 
+                  screenWidth / 2 - layout.width / 2,
+                  screenHeight / 2 + layout.height / 2);
     }
 }

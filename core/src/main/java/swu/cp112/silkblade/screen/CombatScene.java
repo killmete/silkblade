@@ -25,9 +25,18 @@ import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.utils.viewport.FitViewport;
+import com.badlogic.gdx.utils.Timer;
+import com.badlogic.gdx.graphics.g2d.TextureAtlas;
+import com.badlogic.gdx.graphics.g2d.Animation;
+import com.badlogic.gdx.graphics.g2d.TextureRegion;
+import com.badlogic.gdx.graphics.glutils.FrameBuffer;
+import com.badlogic.gdx.graphics.Pixmap;
+import com.badlogic.gdx.utils.Json;
+import com.badlogic.gdx.files.FileHandle;
 
 import swu.cp112.silkblade.core.Main;
 import swu.cp112.silkblade.entity.combat.Bullet;
+import swu.cp112.silkblade.entity.combat.DamageNumber;
 import swu.cp112.silkblade.entity.combat.Player;
 import swu.cp112.silkblade.entity.enemy.AbstractEnemy;
 import swu.cp112.silkblade.entity.enemy.Enemy;
@@ -35,7 +44,10 @@ import swu.cp112.silkblade.entity.enemy.silkgod.DemoEnemy;
 import swu.cp112.silkblade.screen.transition.ScreenTransition;
 import swu.cp112.silkblade.util.GameLogger;
 import swu.cp112.silkblade.entity.combat.BulletTextures;
+import swu.cp112.silkblade.entity.combat.BuffManager;
 import swu.cp112.silkblade.entity.item.ConsumableItem;
+import swu.cp112.silkblade.entity.item.ItemEffectSystem;
+import swu.cp112.silkblade.screen.OptionsScreen;
 
 public class CombatScene implements Screen {
     // =================== Constants ===================
@@ -51,6 +63,8 @@ public class CombatScene implements Screen {
     private static final float ARENA_DEFAULT_HEIGHT = 200f;
     private static final float LETTER_DELAY = 0.05f;
     private static final float PUNCTUATION_DELAY = 0.8f; // Additional delay for punctuation marks
+    // Add a grace period before bullets start spawning
+    private static final float COMBAT_START_GRACE_PERIOD = 0.2f;
 
     // Text speed constants
     private static final float TEXT_SPEED_FAST = 0.02f;
@@ -72,6 +86,12 @@ public class CombatScene implements Screen {
     private static final float DEFEATED_ENEMY_LINGER_TIME = 1.5f;
     private static final float END_COMBAT_DELAY = 0f;
     private static final float DEFAULT_END_COMBAT_PHASE_DELAY = 2.0f; // Default time to wait after all bullets are fired before ending combat phase
+
+    // Death Defiance constants
+    private static final float DEATH_DEFIANCE_DURATION = 5f;
+    private static final int DEATH_DEFIANCE_DEFENSE_BOOST = 999999;
+    private static final float RAINBOW_CYCLE_SPEED = 0.5f; // Speed of color cycling
+
     private static final int[] DIALOGUE_SKIP_KEYS = {
             Input.Keys.Z,
             Input.Keys.ENTER,
@@ -92,6 +112,16 @@ public class CombatScene implements Screen {
     private static final float ITEM_SPACING = 40f;
     private static final float PAGE_INDICATOR_PADDING = 10f;
 
+    // Damage number constants
+    private static final float DAMAGE_NUMBER_ENEMY_Y_OFFSET = 50f;
+    private static final float DAMAGE_NUMBER_PLAYER_Y_OFFSET = 20f;
+
+    // Add constants for skill window similar to item window
+    private static final int SKILLS_PER_ROW = 1;
+    private static final int SKILLS_PER_PAGE = 2;
+    private static final float SKILL_MENU_PADDING = 40f;
+    private static final float SKILL_SPACING = 40f;
+
     // =================== Core Game Objects ===================
     private final Game game;
     private final FitViewport viewport;
@@ -111,6 +141,8 @@ public class CombatScene implements Screen {
     private final Sound levelUpSound;
     private final Sound manaRegenSound;
     private final Sound explosionSound;
+    private final Sound deathExplosionSound;
+    private final Sound deathDefianceSound; // Added Death Defiance sound effect
 
     // =================== Player State ===================
     private final Texture playerTexture;
@@ -138,6 +170,14 @@ public class CombatScene implements Screen {
     private float targetEnemyHPWidth;
     private boolean showDefeatedEnemy = false;
     private float defeatedEnemyLingerTimer = 0f;
+    // Add enemy explosion animation
+    private boolean showEnemyExplosion = false;
+    private float enemyExplosionTimer = 0f;
+    private TextureAtlas explosionAtlas;
+    private Animation<TextureRegion> explosionAnimation;
+    private static final float EXPLOSION_FRAME_DURATION = 0.05f;
+    private float enemyDeathX;
+    private float enemyDeathY;
 
     // =================== Combat State ===================
     private boolean playerTurn = true;
@@ -159,6 +199,8 @@ public class CombatScene implements Screen {
     private float delayedCombatTimer = 0;
     private boolean allBulletsFired = false;
     private float endCombatPhaseTimer = 0;
+    // Add a timer for the grace period
+    private float combatStartGraceTimer = 0;
 
     // =================== Item Menu State ===================
     private boolean showingItemMenu = false;
@@ -167,6 +209,12 @@ public class CombatScene implements Screen {
     private int totalItemPages = 1;
     // Map to track temporary item usage during combat (not saved until combat is won)
     private java.util.Map<String, Integer> temporaryItemUsage = new java.util.HashMap<>();
+
+    // =================== Skill Menu State ===================
+    private boolean showingSkillMenu = false;
+    private int selectedSkillIndex = 0;
+    private int currentSkillPage = 0;
+    private int totalSkillPages = 1;
 
     // =================== Camera Effects ===================
     private static class ShakeEffect {
@@ -201,12 +249,50 @@ public class CombatScene implements Screen {
     private boolean dialogueCompleted = false;
     private float currentTextSpeed;
 
+    // =================== Death Defiance State ===================
+    private boolean deathDefianceAvailable = true; // If the player can use Death Defiance in the current combat
+    private boolean inDeathDefianceState = false; // If the player is currently in the Death Defiance state
+    private float deathDefianceTimer = 0f; // Time left in Death Defiance state
+    private float rainbowColorTime = 0f; // Timer for rainbow color effect
+    private Color rainbowColor = new Color(1, 1, 1, 1); // Current rainbow color
+
     // =================== Additional State ===================
     private boolean pendingDefeatMessage = false;
     private String savedDefeatMessage = "";
+    private final List<DamageNumber> damageNumbers = new ArrayList<>();
 
     // Add a static flag to track if we're returning from combat
     public static boolean returningFromCombat = false;
+
+    // Add a field to track buff information
+    private boolean buffsExpired = false;
+
+    // Add a new field to track if the enemy has been exploded
+    private boolean enemyExploded = false;
+
+    // Add a field to track if we should show credits after the final boss fight
+    private boolean showCreditsAfterDefeat = false;
+
+    // Add a new instance variable to track whether player centering in combat has been applied
+    private boolean initialCombatCenteringApplied = false;
+
+    // Add a new field for enemy background
+    private Texture enemyBackgroundTexture;
+    // Flag to track if loading the background was attempted
+    private boolean backgroundLoadAttempted = false;
+
+    private boolean stageUnlocked = false;
+    private String stageUnlockedMessage = "";
+
+    // Add new fields for the blurred background
+    private Texture blurredBackgroundTexture;
+    private FrameBuffer blurFrameBuffer;
+    private boolean backgroundBlurInitialized = false;
+    private static final float BACKGROUND_BLUR_STRENGTH = 5.5f; // Adjustable blur strength
+
+    // Add player snapshot fields to restore state on death/retreat
+    private Player playerSnapshot;
+    private boolean snapshotTaken = false;
 
     // =================== Constructor ===================
     public CombatScene(Game game) {
@@ -222,6 +308,23 @@ public class CombatScene implements Screen {
                 ((AbstractEnemy) enemy).setCombatScene(this);
             }
             this.player = Player.loadFromFile();
+
+            // Try loading the enemy's custom background if available
+            if (enemy.getCombatBackground() != null) {
+                try {
+                    String backgroundPath = enemy.getCombatBackground();
+                    this.enemyBackgroundTexture = new Texture(Gdx.files.internal(backgroundPath));
+                    GameLogger.logInfo("Loaded enemy background: " + backgroundPath);
+                } catch (Exception e) {
+                    GameLogger.logError("Failed to load enemy background", e);
+                    this.enemyBackgroundTexture = null;
+                }
+            }
+            this.backgroundLoadAttempted = true;
+
+            // Ensure the player's BuffManager is initialized
+            player.ensureBuffManagerExists();
+
             viewport = Main.getViewport();
             camera = Main.getCamera();
 
@@ -253,9 +356,19 @@ public class CombatScene implements Screen {
             playerHitbox.height = 18;
 
             // Initialize audio
-            backgroundMusic = Gdx.audio.newMusic(Gdx.files.internal("music/music.mp3"));
+            String musicPath = "music/mus_boss5.mp3"; // Default music
+            if (enemy.getCombatMusic() != null) {
+                try {
+                    musicPath = enemy.getCombatMusic();
+//                    GameLogger.logInfo("Loaded enemy music: " + musicPath);
+                } catch (Exception e) {
+                    GameLogger.logError("Failed to load enemy music", e);
+                    musicPath = "music/mus_boss5.mp3"; // Fallback to default
+                }
+            }
+            backgroundMusic = Gdx.audio.newMusic(Gdx.files.internal(musicPath));
             backgroundMusic.setLooping(true);
-            backgroundMusic.setVolume(.05f);
+            backgroundMusic.setVolume(.15f);
 
             typingSound = Gdx.audio.newSound(Gdx.files.internal("sounds/typing_2.wav"));
             selectSound = Gdx.audio.newSound(Gdx.files.internal("sounds/select.wav"));
@@ -266,6 +379,8 @@ public class CombatScene implements Screen {
             levelUpSound = Gdx.audio.newSound(Gdx.files.internal("sounds/level_up.wav"));
             manaRegenSound = Gdx.audio.newSound(Gdx.files.internal("sounds/mana_regen.wav"));
             explosionSound = Gdx.audio.newSound(Gdx.files.internal("sounds/explosion.wav"));
+            deathExplosionSound = Gdx.audio.newSound(Gdx.files.internal("sounds/death_explosion.wav"));
+            deathDefianceSound = Gdx.audio.newSound(Gdx.files.internal("sounds/defiance.wav")); // Repurpose level up sound for now
 
             // Initialize HP values
             initializeHPValues();
@@ -280,6 +395,10 @@ public class CombatScene implements Screen {
             dialogueArenaWidth = ARENA_DEFAULT_WIDTH;
             dialogueArenaHeight = ARENA_DEFAULT_HEIGHT;
 
+            // Initialize explosion animation
+            explosionAtlas = new TextureAtlas(Gdx.files.internal("assets/atlas/explosion_atlas.atlas"));
+            explosionAnimation = new Animation<>(EXPLOSION_FRAME_DURATION, explosionAtlas.findRegions("explosion_frame"));
+
         } catch (Exception e) {
             GameLogger.logError("Failed to initialize Combat Scene with enemy", e);
             throw e;
@@ -293,7 +412,23 @@ public class CombatScene implements Screen {
         setDialogueText(currentEnemy.getEncounterDialogue());
         centerArena();
         selectedButton = -1;
-        
+        enemyExploded = false; // Reset the explosion flag
+
+        // Take a snapshot of the player's state at the start of combat
+        takePlayerSnapshot();
+
+        // Center player when scene is first shown
+        centerPlayer();
+
+        // Attempt to load the background if not already loaded
+        if (enemyBackgroundTexture == null && !backgroundLoadAttempted) {
+            loadEnemyBackground();
+        }
+
+        // Reset free skill cast availability for the new combat
+        player.resetFreeSkillCast();
+        GameLogger.logInfo("Free skill cast reset and available for new combat: " + player.hasFreeSkillCastAvailable());
+
         // Pause the global music and play our combat-specific music
         swu.cp112.silkblade.core.Main.pauseBackgroundMusic();
         backgroundMusic.play();
@@ -337,6 +472,16 @@ public class CombatScene implements Screen {
         camera.position.set(viewport.getWorldWidth() / 2, viewport.getWorldHeight() / 2, 0);
         camera.update();
         centerArena();
+
+        // Center player after resize if not in active combat
+        if (!inCombat || !enemyTurn) {
+            centerPlayer();
+        }
+
+        // Recreate blur effect after resize if background exists
+        if (enemyBackgroundTexture != null) {
+            initializeBackgroundBlur();
+        }
     }
 
     @Override
@@ -349,13 +494,21 @@ public class CombatScene implements Screen {
     public void hide() {
         // Reset blend function when hiding the screen to ensure clean transitions
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-        
+
         // Stop combat music but don't resume main music yet
         // (let the next screen handle resuming it)
         if (backgroundMusic != null && backgroundMusic.isPlaying()) {
             backgroundMusic.stop();
         }
-        
+
+        // If we're leaving combat and the enemy wasn't defeated, restore player state
+        // This covers cases where we exit without using proper menu options
+        if (!currentEnemy.isDefeated()) {
+            // Restore the player's pre-combat state
+            restorePlayerFromSnapshot();
+            GameLogger.logInfo("Combat exit detected - restored player state since combat wasn't completed");
+        }
+
         // Set the flag to indicate we're returning from combat
         returningFromCombat = true;
     }
@@ -382,7 +535,30 @@ public class CombatScene implements Screen {
             levelUpSound.dispose();
             manaRegenSound.dispose();
             explosionSound.dispose();
+            deathExplosionSound.dispose();
+            deathDefianceSound.dispose();
             shapeRenderer.dispose();
+
+            // Dispose the enemy background texture if it was loaded
+            if (enemyBackgroundTexture != null) {
+                enemyBackgroundTexture.dispose();
+                enemyBackgroundTexture = null;
+            }
+
+            // Dispose blur resources
+            if (blurredBackgroundTexture != null) {
+                blurredBackgroundTexture.dispose();
+                blurredBackgroundTexture = null;
+            }
+            if (blurFrameBuffer != null) {
+                blurFrameBuffer.dispose();
+                blurFrameBuffer = null;
+            }
+
+            // Dispose the explosion atlas
+            if (explosionAtlas != null) {
+                explosionAtlas.dispose();
+            }
 
             // Dispose the bullet textures
             BulletTextures.getInstance().dispose();
@@ -400,11 +576,30 @@ public class CombatScene implements Screen {
         updateImmunity(delta);
         updateShake(delta);
         updateEnemyHPBar(delta);
+        // Update damage numbers
+        updateDamageNumbers(delta);
+        // Update Death Defiance state if active
+        if (inDeathDefianceState) {
+            updateDeathDefianceState(delta);
+        }
         // Only update linger timer after defeat message is shown
         if (showDefeatedEnemy && !pendingDefeatMessage) {
             defeatedEnemyLingerTimer += delta;
             if (defeatedEnemyLingerTimer >= DEFEATED_ENEMY_LINGER_TIME) {
                 showDefeatedEnemy = false;
+                // Start explosion animation when enemy disappears
+                showEnemyExplosion = true;
+                enemyExplosionTimer = 0f;
+
+                // Store enemy position for explosion effect - center of enemy sprite
+                float screenCenterX = viewport.getWorldWidth() / 2;
+                // Store the center coordinates instead of top-left
+                enemyDeathX = screenCenterX;
+                enemyDeathY = arena.y + ARENA_DEFAULT_HEIGHT + 30 + currentEnemy.getHeight() / 2;
+
+                // Play explosion sound and shake screen
+                deathExplosionSound.play(0.4f);
+                startShake(0.5f, 10.0f);
             }
         }
         if (inAttackSequence && !isTransitioning) {
@@ -413,7 +608,7 @@ public class CombatScene implements Screen {
         if (delayedCombatPending) {
             updateDelayedCombat(delta);
         }
-        
+
         if (inCombat) {
             currentEnemy.updatePlayerPosition(playerHitbox.x, playerHitbox.y);
             updateBullets(delta);
@@ -427,22 +622,78 @@ public class CombatScene implements Screen {
             }
             updateDialogueText(delta);
         }
+
+        // Add missing explosion animation update
+        if (showEnemyExplosion) {
+            enemyExplosionTimer += delta;
+            if (enemyExplosionTimer >= explosionAnimation.getAnimationDuration()) {
+                showEnemyExplosion = false;
+            }
+        }
     }
 
     // =================== Rendering Methods ===================
     private void renderGameElements() {
+        // First, render the background (if custom background exists)
+        // This draws only the background portion, not the arena box
+        if (enemyBackgroundTexture != null) {
+            spriteBatch.setProjectionMatrix(camera.combined);
+            spriteBatch.begin();
+
+            // Explicitly reset color to WHITE to prevent tinting from other rendering operations
+            spriteBatch.setColor(Color.WHITE);
+
+            float screenWidth = viewport.getWorldWidth();
+            float screenHeight = viewport.getWorldHeight();
+
+            // Draw the blurred background if available, otherwise fallback to normal
+            if (backgroundBlurInitialized && blurredBackgroundTexture != null) {
+                // Fix for flipped y-coordinate in frame buffer textures
+                spriteBatch.draw(
+                    blurredBackgroundTexture,
+                    0, 0,                   // Position at top-left corner
+                    screenWidth, screenHeight,  // Size to draw
+                    0, 0,                   // Source texture coordinates
+                    blurredBackgroundTexture.getWidth(), blurredBackgroundTexture.getHeight(),
+                    false, true             // Flip y-coordinate to fix the upside-down issue
+                );
+            } else {
+                // Position background to cover the whole screen
+                spriteBatch.draw(
+                    enemyBackgroundTexture,
+                    0, 0,  // Position at top-left corner
+                    screenWidth, screenHeight  // Scale to full screen size
+                );
+            }
+
+            spriteBatch.end();
+        }
+
+        // Then render the enemy if applicable, so it appears BEHIND the combat box
         // Show enemy if:
         // 1. Not defeated OR
         // 2. Showing damage message OR
-        // 3. Waiting for death message to be shown (pendingDefeatMessage)
-        if (!currentEnemy.isDefeated() || showHPAfterDamage || pendingDefeatMessage) {
+        // 3. Waiting for death message to be shown (pendingDefeatMessage) OR
+        // 4. Not showing the explosion effect (meaning either it's still visible or hasn't been exploded yet)
+        if ((!currentEnemy.isDefeated() || showHPAfterDamage || pendingDefeatMessage) && !showEnemyExplosion && !enemyExploded) {
+            // Ensure enemy alpha is properly set when in combat mode
+            if (inCombat && enemyTurn) {
+                currentEnemy.setAlpha(COMBAT_PHASE_ALPHA); // Ensure proper alpha during combat
+            }
             renderEnemy();
+        }
+
+        // Now render the combat box (arena) ON TOP of the enemy
+        renderCombatBox();
+
+        // Render enemy HP if applicable, after combat box to ensure it's visible
+        if ((!currentEnemy.isDefeated() || showHPAfterDamage || pendingDefeatMessage) && !showEnemyExplosion && !enemyExploded) {
             if (showHPAfterDamage || pendingDefeatMessage) {
                 renderEnemyHP();
             }
         }
 
-        renderCombatBox();
+        // Then render other UI elements
         renderHUD();
 
         if (inCombat) {
@@ -456,12 +707,26 @@ public class CombatScene implements Screen {
             if (bullets.size > 0) {
                 renderBullets();
             }
+        } else if (showingSkillMenu) {
+            renderSkillMenu();
+            // Render bullets on top of skill menu if any exist after combat
+            if (bullets.size > 0) {
+                renderBullets();
+            }
         } else {
             renderDialogueText();
             // Render bullets on top of dialogue if any exist after combat
             if (bullets.size > 0) {
                 renderBullets();
             }
+        }
+
+        // Render damage numbers on top of everything
+        renderDamageNumbers();
+
+        // Render explosion effect if active
+        if (showEnemyExplosion) {
+            renderEnemyExplosion();
         }
 
         renderButtons();
@@ -473,30 +738,27 @@ public class CombatScene implements Screen {
         float screenWidth = viewport.getWorldWidth();
         float screenHeight = viewport.getWorldHeight();
 
-        // Calculate positions for both cases
+        // Always center horizontally
         float centerX = (screenWidth - arena.width) / 2;
+
+        // Position above buttons
         float buttonY = 20;
         float buttonHeight = BUTTON_HEIGHT;
         float marginAboveButtons = 60;
-
         float hudY = buttonY + buttonHeight + marginAboveButtons;
-        float centerY = (screenHeight - arena.height) / 2;
 
-        // Set X position (always centered horizontally)
+        // Set positions
         arena.x = centerX;
+        arena.y = hudY;
 
-        // Determine Y position based on size with smooth transition
-        if (arena.width <= 100 && arena.height <= 100) {
-            arena.y = centerY;
-        } else {
-            arena.y = hudY;
-        }
-
-        // When transitioning between sizes, update target position before animation starts
+        // When transitioning between sizes, update target position
         if (isTransitioning) {
-            targetX = centerX;
-            targetY = (targetArenaWidth <= 100 && targetArenaHeight <= 100) ? centerY : hudY;
+            targetX = (screenWidth - targetArenaWidth) / 2;
+            targetY = hudY;
         }
+
+        // Log for debugging
+        // GameLogger.logInfo("centerArena called - arena position set to: " + arena.x + ", " + arena.y);
     }
 
     // Modify updateArenaSize() to handle position transitions
@@ -533,12 +795,26 @@ public class CombatScene implements Screen {
         arena.width = currentArenaWidth;
         arena.height = currentArenaHeight;
 
+        // During transition, update player position if we're going into combat
+        // ONLY if initial centering hasn't been applied yet
+        if (inCombat && !enemyTurn && !initialCombatCenteringApplied) {
+            centerPlayer();
+            initialCombatCenteringApplied = true;
+        }
+
         // Check if transition is complete
         if (Math.abs(currentArenaWidth - targetArenaWidth) < 0.5f &&
                 Math.abs(currentArenaHeight - targetArenaHeight) < 0.5f &&
                 Math.abs(arena.x - targetX) < 0.5f &&
                 Math.abs(arena.y - targetY) < 0.5f) {
             isTransitioning = false;
+
+            // Center player in the arena after transition completes
+            // For combat, ONLY center if initial centering hasn't been applied
+            if (!initialCombatCenteringApplied && (inCombat || !enemyTurn)) {
+                centerPlayer();
+                initialCombatCenteringApplied = true;
+            }
         }
     }
 
@@ -556,6 +832,7 @@ public class CombatScene implements Screen {
             float screenWidth = viewport.getWorldWidth();
             float screenHeight = viewport.getWorldHeight();
 
+            // IMPORTANT: Always center horizontally
             targetX = (screenWidth - targetArenaWidth) / 2;
 
             float buttonY = 20;
@@ -565,7 +842,11 @@ public class CombatScene implements Screen {
             float hudY = buttonY + buttonHeight + marginAboveButtons;
             float centerY = (screenHeight - targetArenaHeight) / 2;
 
-            targetY = (targetArenaWidth <= 100 && targetArenaHeight <= 100) ? centerY : hudY;
+            // Always position above buttons for combat
+            targetY = hudY;
+
+            // Log for debugging
+            // GameLogger.logInfo("setArenaSize called with " + width + "x" + height + " - target position: " + targetX + ", " + targetY);
         }
 
         this.isTransitioning = true;
@@ -575,7 +856,7 @@ public class CombatScene implements Screen {
         Gdx.gl.glLineWidth(5);
         shapeRenderer.setProjectionMatrix(camera.combined);
 
-        // Draw filled black background
+        // Draw filled black background for the arena
         shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
         shapeRenderer.setColor(Color.BLACK);
         shapeRenderer.rect(arena.x, arena.y, arena.width, arena.height);
@@ -622,7 +903,8 @@ public class CombatScene implements Screen {
 
             if (combatKeyPressCount >= 2) {
                 delayedCombatPending = false;
-                showHPAfterDamage = false;
+                // Let the startCombat method handle setting showHPAfterDamage to false
+                // so the HP bar is visible up until combat actually starts
                 startCombat();
                 combatKeyPressCount = 0;
             }
@@ -635,67 +917,171 @@ public class CombatScene implements Screen {
         inCombat = true;
 
         // Get arena dimensions from current pattern
+        // IMPORTANT: We need to get the dimensions directly from the enemy's current pattern
+        // This ensures dimensions are always up to date
         COMBAT_ARENA_WIDTH = currentEnemy.getArenaWidth();
         COMBAT_ARENA_HEIGHT = currentEnemy.getArenaHeight();
-        setArenaSize(COMBAT_ARENA_WIDTH, COMBAT_ARENA_HEIGHT);
+
+        // Save the arena dimensions before starting transition
+        float newArenaWidth = COMBAT_ARENA_WIDTH;
+        float newArenaHeight = COMBAT_ARENA_HEIGHT;
+
+        // Reset the centering flag at the start of each combat
+        initialCombatCenteringApplied = false;
+
         playerTurn = false;
         enemyTurn = true;
+
+        // We don't update buffs here - buffs should only be decremented after surviving an enemy turn
+
         bullets.clear();
         bulletsSpawned = 0;
         combatActive = true;
         showHPAfterDamage = false;
         allBulletsFired = false;  // Reset the all bullets fired flag
 
+        // Reset grace period timer when starting combat
+        combatStartGraceTimer = 0;
+
+        // Reset Death Defiance for the new combat
+        inDeathDefianceState = false;
+        rainbowColor.set(Color.WHITE);
+        GameLogger.logInfo("Death Defiance reset and available for new combat");
+
         // Dim the enemy during combat
         currentEnemy.setAlpha(COMBAT_PHASE_ALPHA);
 
-        // Update these values from the enemy
+        // IMPORTANT: Let the enemy start their turn BEFORE getting interval/bullet values
+        // This ensures the pattern is selected first
+        if (currentEnemy != null) {
+            currentEnemy.startTurn();
+        }
+
+        // Update these values from the enemy's CURRENT pattern (which may have just changed)
         bulletSpawnInterval = currentEnemy.getAttackInterval();
         maxBullets = currentEnemy.getMaxBullets();
 
-        if (currentEnemy != null) {
-            currentEnemy.startTurn();
-            // Update interval again after startTurn in case it changed
-            bulletSpawnInterval = currentEnemy.getAttackInterval();
-            maxBullets = currentEnemy.getMaxBullets();
-        }
+        // Also update arena dimensions AGAIN in case the enemy changed patterns during startTurn
+        COMBAT_ARENA_WIDTH = currentEnemy.getArenaWidth();
+        COMBAT_ARENA_HEIGHT = currentEnemy.getArenaHeight();
 
-        float centerX = targetX + (targetArenaWidth / 2) - (PLAYER_SIZE / 2);
-        float centerY = targetY + (targetArenaHeight / 2) - (PLAYER_SIZE / 2);
+        // If dimensions changed during startTurn, update arena transition
+        setArenaSize(COMBAT_ARENA_WIDTH, COMBAT_ARENA_HEIGHT);
 
+        // IMPORTANT: Explicitly center the arena AFTER setting its size
+        // This ensures it's positioned correctly on screen
+        centerArena();
+
+        // Log centering for debugging
+        // GameLogger.logInfo("Arena centered in startCombat - dimensions: " + COMBAT_ARENA_WIDTH + "x" + COMBAT_ARENA_HEIGHT);
+        // GameLogger.logInfo("Arena position: x=" + arena.x + ", y=" + arena.y);
+
+        // Calculate center position based on target dimensions
+        // This ensures the player is centered correctly even if the arena transition isn't complete
+        float screenWidth = viewport.getWorldWidth();
+        float centerX = (screenWidth - COMBAT_ARENA_WIDTH) / 2 + (COMBAT_ARENA_WIDTH / 2) - (PLAYER_SIZE / 2);
+
+        float buttonY = 20;
+        float buttonHeight = BUTTON_HEIGHT;
+        float marginAboveButtons = 60;
+        float hudY = buttonY + buttonHeight + marginAboveButtons;
+
+        float centerY = hudY + (COMBAT_ARENA_HEIGHT / 2) - (PLAYER_SIZE / 2);
+
+        // Position player immediately at the center of what will be the arena
         playerSprite.setPosition(centerX, centerY);
         playerHitbox.x = centerX;
         playerHitbox.y = centerY;
-        playerHitbox.width = PLAYER_SIZE;
-        playerHitbox.height = PLAYER_SIZE;
+
+        // Mark that initial centering has been applied
+        initialCombatCenteringApplied = true;
+    }
+
+    // Add a new method to update arena size when pattern changes
+    // This can be called by the enemy when it selects a new pattern
+    public void updateArenaForPattern() {
+        if (inCombat && enemyTurn) {
+            // Only update if we're in active combat
+            float newWidth = currentEnemy.getArenaWidth();
+            float newHeight = currentEnemy.getArenaHeight();
+
+            // Update stored arena dimensions
+            COMBAT_ARENA_WIDTH = newWidth;
+            COMBAT_ARENA_HEIGHT = newHeight;
+
+            // Log before resizing
+            // GameLogger.logInfo("Updating arena for pattern: " + newWidth + "x" + newHeight);
+
+            // First trigger arena resize
+            setArenaSize(newWidth, newHeight);
+
+            // Then explicitly center the arena
+            centerArena();
+
+            // Log after centering
+            // GameLogger.logInfo("Arena centered - position: " + arena.x + ", " + arena.y);
+
+            // Recenter player if needed
+            if (!combatActive) {
+                centerPlayer();
+            }
+        }
     }
 
     public void endCombat() {
         inCombat = false;
-        setArenaSize(dialogueArenaWidth, dialogueArenaHeight);
-        playerTurn = true;
-        enemyTurn = false;
-        currentDisplayText.setLength(0);
-        currentLetterIndex = 0;
-        isTyping = true;
-        dialogueCompleted = false;
 
-        // Reset blend function to ensure proper rendering after combat
-        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-
-        // Restore enemy brightness
-        currentEnemy.setAlpha(1.0f);
-
-        // Regenerate MP and play sound
-        float oldMP = player.getMP();
-        player.regenMP();
-        if (player.getMP() > oldMP) {  // Only play sound if MP actually increased
-            manaRegenSound.play(0.15f);  // Adjust volume (0.0 to 1.0) as needed
-        }
-        updateMPTargets();
-
+        // Call endTurn on the enemy to ensure pattern rotation
         if (currentEnemy != null) {
             currentEnemy.endTurn();
+        }
+
+        combatActive = false;
+        playerTurn = true;
+        enemyTurn = false;
+        showHPAfterDamage = false; // Explicitly reset HP display flag
+
+        // THIS is the correct place to update buffs - after the player survives an enemy's turn
+        // A buff with duration=2 will last through two complete combat cycles
+        boolean buffsExpired = player.updateBuffs();
+        if (buffsExpired) {
+            GameLogger.logInfo("Some buffs expired after surviving enemy's turn");
+        }
+
+        // Reset the centering flag
+        initialCombatCenteringApplied = false;
+
+        // Reset arena size to dialogue dimensions
+        COMBAT_ARENA_WIDTH = ARENA_DEFAULT_WIDTH;
+        COMBAT_ARENA_HEIGHT = ARENA_DEFAULT_HEIGHT;
+        setArenaSize(ARENA_DEFAULT_WIDTH, ARENA_DEFAULT_HEIGHT);
+
+        // Turn off bullet spawning
+        bulletsSpawned = maxBullets + 1;
+
+        // Reset enemy
+        if (currentEnemy != null) {
+            // Make enemy fully visible again
+            currentEnemy.setAlpha(1.0f);
+        }
+
+        // Handle post-combat effects, including temporary item usage
+        applyItemUsage();
+
+        // Add a delay before ending combat completely
+        endCombatTimer = 0;
+        bulletSpawnTimer = 0;
+        if (pendingDefeatMessage) {
+            showEnemyExplosion = true;
+            enemyExplosionTimer = 0f;
+            enemyDeathX = viewport.getWorldWidth() / 2 - 32; // Center explosion
+            enemyDeathY = arena.y + ARENA_DEFAULT_HEIGHT + 30 + currentEnemy.getHeight() / 2 - 32;
+
+            setDialogueText(savedDefeatMessage);
+            pendingDefeatMessage = false;
+
+            // Play death explosion sound
+            deathExplosionSound.play(0.7f);
         }
     }
     private boolean playAudioOnce = true;
@@ -721,10 +1107,40 @@ public class CombatScene implements Screen {
                     return; // Don't proceed until the player presses a key
                 }
 
-                // Step 3: Play skill sound & start timer
+                // Consume MP before playing sound
                 player.consumeMPForSkill(player.getCurrentSkill());
                 updateMPTargets();
-                attackSequenceTimer = -player.playSkillSound();
+
+                // Handle sounds differently based on skill type
+                Player.SkillType currentSkill = player.getCurrentSkill();
+
+                if (currentSkill == Player.SkillType.BASIC) {
+                    // For basic slash, play attack sound (with double attack if equipped)
+                    if (player.willPerformDoubleAttack(currentSkill)) {
+                        // Play attack sound twice for double attack
+                        attackSound.play(0.5f);
+                        // Small delay between sounds
+                        Timer.schedule(new Timer.Task() {
+                            @Override
+                            public void run() {
+                                attackSound.play(0.5f);
+                            }
+                        }, 0.2f);
+                    } else {
+                        // Single attack sound
+                        attackSound.play(0.5f);
+                    }
+                    // Also need to get sound duration for the timer
+                    attackSequenceTimer = -player.getSkillDuration(currentSkill);
+                } else {
+                    // For other skills, only play the skill sound (not the attack sound)
+                    // Double attack should not apply to skills (they're separate from the basic attack)
+                    attackSequenceTimer = -player.playSkillSound();
+
+                    // Double attack no longer applies to skill sounds - it's just for basic slash
+                    // Double attack mechanics are only for basic attacks
+                }
+
                 playAudioOnce = false;
             }
 
@@ -735,24 +1151,71 @@ public class CombatScene implements Screen {
             if (attackSequenceTimer >= 1.2) {
                 inAttackSequence = false;
                 Player.DamageResult damageResult = player.calculateSkillDamage(player.getCurrentSkill());
-                currentEnemy.damage(damageResult.damage, damageResult.isCritical);
-                startShake(0.3f, 8.0f);
 
-                String attackMessage = damageResult.isCritical
-                    ? "CRITICAL! " + player.getSkillMessage(player.getCurrentSkill(), damageResult.damage, currentEnemy)
-                    : player.getSkillMessage(player.getCurrentSkill(), damageResult.damage, currentEnemy);
+                // Apply special skill effects before applying damage
+                player.applySkillEffects(player.getCurrentSkill());
+
+                // Check if the skill is a buffing skill (SKILL2 or SKILL4)
+                Player.SkillType currentSkill = player.getCurrentSkill();
+                boolean isBuffSkill = currentSkill == Player.SkillType.SKILL2 || currentSkill == Player.SkillType.SKILL4;
+
+                // Only damage enemy if it's not a buffing skill
+                if (!isBuffSkill) {
+                    currentEnemy.damage(damageResult.damage, damageResult.isCritical);
+                    startShake(0.3f, 8.0f);
+
+                    // Create damage number display for enemy using the new method for better visibility
+                    float screenCenterX = viewport.getWorldWidth() / 2;
+                    float enemyX = screenCenterX;
+                    float enemyY = arena.y + ARENA_DEFAULT_HEIGHT + 30 + DAMAGE_NUMBER_ENEMY_Y_OFFSET;
+                    damageNumbers.add(DamageNumber.createEnemyDamage(damageResult.damage, enemyX, enemyY, damageResult.isCritical));
+                }
+
+                String attackMessage;
+                if (isBuffSkill) {
+                    // For buff skills, just use the skill message without damage details
+                    attackMessage = player.getSkillMessage(player.getCurrentSkill(), 0, currentEnemy);
+                } else if (damageResult.isCritical && damageResult.isDoubleAttack && currentSkill == Player.SkillType.BASIC) {
+                    // Only basic attacks can have double attack text
+                    attackMessage = "CRITICAL DOUBLE ATTACK! " + player.getSkillMessage(player.getCurrentSkill(), damageResult.damage, currentEnemy);
+                } else if (damageResult.isCritical) {
+                    attackMessage = "CRITICAL! " + player.getSkillMessage(player.getCurrentSkill(), damageResult.damage, currentEnemy);
+                } else if (damageResult.isDoubleAttack && currentSkill == Player.SkillType.BASIC) {
+                    // Only basic attacks can have double attack text
+                    attackMessage = "DOUBLE ATTACK! " + player.getSkillMessage(player.getCurrentSkill(), damageResult.damage, currentEnemy);
+                } else {
+                    attackMessage = player.getSkillMessage(player.getCurrentSkill(), damageResult.damage, currentEnemy);
+                }
 
                 setDialogueText(attackMessage);
-                showHPAfterDamage = true;
-                updateEnemyHPTargets();
 
-                if (currentEnemy.isDefeated()) {
+                // Only show HP bar and update HP targets for non-buff skills
+                if (!isBuffSkill) {
+                    showHPAfterDamage = true;
+                    updateEnemyHPTargets();
+                } else {
+                    // For buff skills, don't show enemy HP bar
+                    showHPAfterDamage = false;
+                }
+
+                updateHPTargets(); // Update player HP targets after buff/healing effects
+
+                // Only update enemy HP if we actually damaged them
+                if (!isBuffSkill) {
+                    updateEnemyHPTargets();
+                }
+
+                if (!isBuffSkill && currentEnemy.isDefeated()) {
                     backgroundMusic.stop();
                     savedDefeatMessage = currentEnemy.getDefeatDialogue() + "\n" + currentEnemy.getRewardDialogue();
                     pendingDefeatMessage = true;
+                    showDefeatedEnemy = true; // Add this line to enable explosion effect
                 } else {
                     startDelayedCombat();
                 }
+
+                // We shouldn't update buffs here as we haven't completed a turn yet
+                // Let buffs remain until the player survives the enemy's turn
 
                 // Reset for the next attack
                 playAudioOnce = true;
@@ -763,6 +1226,18 @@ public class CombatScene implements Screen {
     // =================== Player/Enemy Health Management Methods ===================
 
     public void decreaseHP(int damage) {
+        // Skip damage entirely if in Death Defiance state
+        if (inDeathDefianceState) {
+            // Create a special "blocked" message instead of damage
+            float damageNumberX = playerHitbox.x + playerHitbox.width / 2;
+            float damageNumberY = playerHitbox.y + playerHitbox.height + DAMAGE_NUMBER_PLAYER_Y_OFFSET;
+            DamageNumber blockedMsg = new DamageNumber(0, damageNumberX, damageNumberY, false, true);
+            blockedMsg.setCustomText("BLOCKED!");
+            blockedMsg.setColor(Color.GOLD);
+            damageNumbers.add(blockedMsg);
+            return;
+        }
+
         if (!isImmune) {
             // Get current HP before damage for comparison
             float oldHP = player.getCurrentHP();
@@ -773,6 +1248,11 @@ public class CombatScene implements Screen {
             // Get new HP after damage
             float newHP = player.getCurrentHP();
 
+            // Create damage number above player
+            float damageNumberX = playerHitbox.x + playerHitbox.width / 2;
+            float damageNumberY = playerHitbox.y + playerHitbox.height + DAMAGE_NUMBER_PLAYER_Y_OFFSET;
+            damageNumbers.add(new DamageNumber(damage, damageNumberX, damageNumberY, false, false));
+
             // If HP was extremely high and damage didn't cause a visible change
             // force a visible reduction in the bar
             if (oldHP > player.getMaxHP() && Math.abs(oldHP - newHP) / oldHP < 0.01) {
@@ -780,11 +1260,42 @@ public class CombatScene implements Screen {
                 targetHPWidth = Math.max(targetHPWidth - 1.0f, 0f);
             }
 
-            if (player.isDead()) {
-                // Reset blend function to normal before transitioning to main menu
+            // Check if player would die and if Death Defiance is available
+            if (player.isDead() && player.hasDeathDefiance() && deathDefianceAvailable) {
+                // Additional safety check - if the player is already in Death Defiance state,
+                // they shouldn't trigger it again
+                if (inDeathDefianceState) {
+                    GameLogger.logError("Attempted to activate Death Defiance while already in Death Defiance state!", null);
+                    deathDefianceAvailable = false;
+                } else {
+                    // Log the Death Defiance activation for debugging
+                    GameLogger.logInfo("Death Defiance activated: Player has " + player.getCurrentHP() + " HP");
+
+                    // Activate Death Defiance instead of dying
+                    activateDeathDefiance();
+                }
+            } else if (player.isDead()) {
+                // Log why Death Defiance wasn't activated
+                if (!player.hasDeathDefiance()) {
+                    GameLogger.logInfo("Player doesn't have Death Defiance equipped - Instant Death");
+                } else if (!deathDefianceAvailable) {
+                    GameLogger.logInfo("Death Defiance already used this combat");
+                }
+
+                // Restore player state to pre-combat snapshot since player is dying
+                restorePlayerFromSnapshot();
+
+                // Reset blend function to normal before transitioning to game over screen
                 Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
                 backgroundMusic.stop();
-                game.setScreen(new StageSelectionScreen(game));
+
+                // Get the player's current position for death animation
+                float playerDeathX = playerHitbox.x;
+                float playerDeathY = playerHitbox.y;
+
+                // Transition to the game over screen with the death position
+                game.setScreen(new GameOverScreen(game, playerDeathX, playerDeathY, currentEnemy));
+                return; // Skip immunity and shake since we're leaving
             }
 
             startShake(0.3f, 8.0f);
@@ -797,7 +1308,14 @@ public class CombatScene implements Screen {
     }
 
     public void increaseHP(int healing) {
-        player.heal(healing);  // Instead of direct HP manipulation
+        int absHealing = Math.abs(healing); // Always make sure healing is positive
+        player.heal(absHealing);  // Instead of direct HP manipulation
+
+        // Create healing number (green) above player
+        float healNumberX = playerHitbox.x + playerHitbox.width / 2;
+        float healNumberY = playerHitbox.y + playerHitbox.height + DAMAGE_NUMBER_PLAYER_Y_OFFSET;
+        damageNumbers.add(new DamageNumber(absHealing, healNumberX, healNumberY, true, false));
+
         updateHPTargets();
     }
 
@@ -934,6 +1452,8 @@ public class CombatScene implements Screen {
         float baseSpeed = BASE_HP_TRANSITION_SPEED + (1 - hpPercentage) * 0.12f;
         float dynamicTransitionSpeed = Math.min(baseSpeed * speedMultiplier, MAX_HP_TRANSITION_SPEED);
 
+        boolean wasAnimating = Math.abs(currentEnemyHPWidth - targetEnemyHPWidth) > 0.5f;
+
         if (currentEnemyHPWidth < targetEnemyHPWidth) {
             currentEnemyHPWidth += dynamicTransitionSpeed;
             if (currentEnemyHPWidth > targetEnemyHPWidth) {
@@ -946,12 +1466,21 @@ public class CombatScene implements Screen {
             }
         }
 
-        // Check if HP reached 0 and start linger timer
-        if (currentEnemyHPWidth <= 0f && showHPAfterDamage) {
+        // Animation has finished when we were animating before but now the difference is small
+        boolean animationJustFinished = wasAnimating && Math.abs(currentEnemyHPWidth - targetEnemyHPWidth) <= 0.5f;
+
+        // Start the linger timer when animation finishes ONLY for thorn damage (not when delayed combat is pending)
+        if (animationJustFinished && showHPAfterDamage && !delayedCombatPending) {
+            hpBarLingerTimer = 0f; // Reset and start counting
+        }
+
+        // Only hide HP bar after thorn damage animation when not in delayed combat phase
+        // For player attacks, HP bar should stay visible until combat phase starts
+        if (showHPAfterDamage && hpBarLingerTimer >= 0f && !delayedCombatPending) {
             hpBarLingerTimer += delta;
-            if (hpBarLingerTimer >= HP_BAR_LINGER_TIME) {
+            if (hpBarLingerTimer >= 1.25f) { // 1.25 seconds after animation finishes
                 showHPAfterDamage = false;
-                hpBarLingerTimer = 0f;
+                hpBarLingerTimer = -1f; // Reset to inactive state
             }
         }
     }
@@ -1004,10 +1533,19 @@ public class CombatScene implements Screen {
         boolean shouldPause = false;
         if (currentLetterIndex > 0 && currentLetterIndex < fullDialogueText.length()) {
             char currentChar = fullDialogueText.charAt(currentLetterIndex - 1);
-            // Check if the previous character is a punctuation mark that should cause a pause
-            if (currentChar == '.' || currentChar == ',' || currentChar == '!' ||
-                currentChar == '?' || currentChar == ':' || currentChar == ';') {
-                shouldPause = true;
+
+            // Only pause for punctuation if:
+            // 1. The current character is one of the pause-worthy punctuation marks
+            // 2. AND either:
+            //    a. It's the last character in the string, OR
+            //    b. The next character is a space or newline (indicating end of sentence)
+            if ((currentChar == '.' || currentChar == '!' || currentChar == '?')) {
+                // Check if it's the last character or followed by a space/newline
+                if (currentLetterIndex == fullDialogueText.length() ||
+                    fullDialogueText.charAt(currentLetterIndex) == ' ' ||
+                    fullDialogueText.charAt(currentLetterIndex) == '\n') {
+                    shouldPause = true;
+                }
             }
         }
 
@@ -1248,18 +1786,35 @@ public class CombatScene implements Screen {
     private void updateBullets(float delta) {
         // Only spawn new bullets if we're in active combat
         if (inCombat && combatActive) {
-            bulletSpawnTimer += delta;
-            if (bulletSpawnTimer >= bulletSpawnInterval && bulletsSpawned < maxBullets) {
-                List<Bullet> enemyBullets = currentEnemy.generateAttack(
-                    arena.x, arena.y, arena.width, arena.height
-                );
+            // Update grace period timer
+            combatStartGraceTimer += delta;
 
-                if (enemyBullets != null && !enemyBullets.isEmpty()) {
-                    bullets.addAll(enemyBullets.toArray(new Bullet[0]));
-                    bulletsSpawned++;
+            // Only start spawning bullets after grace period has elapsed
+            if (combatStartGraceTimer >= COMBAT_START_GRACE_PERIOD) {
+                bulletSpawnTimer += delta;
+                if (bulletSpawnTimer >= bulletSpawnInterval && bulletsSpawned < maxBullets) {
+                    List<Bullet> enemyBullets;
+
+                    // Use the target dimensions during transition to ensure consistent bullet spawning
+                    if (isTransitioning) {
+                        // Use target dimensions and positions for accurate bullet spawning during transition
+                        enemyBullets = currentEnemy.generateAttack(
+                            targetX, targetY, targetArenaWidth, targetArenaHeight
+                        );
+                    } else {
+                        // Use current arena dimensions once transition is complete
+                        enemyBullets = currentEnemy.generateAttack(
+                            arena.x, arena.y, arena.width, arena.height
+                        );
+                    }
+
+                    if (enemyBullets != null && !enemyBullets.isEmpty()) {
+                        bullets.addAll(enemyBullets.toArray(new Bullet[0]));
+                        bulletsSpawned++;
+                    }
+
+                    bulletSpawnTimer = 0;
                 }
-
-                bulletSpawnTimer = 0;
             }
 
             // Check if all bullets have been fired
@@ -1278,14 +1833,14 @@ public class CombatScene implements Screen {
             // If all bullets have been fired, start timer for ending combat phase
             if (allBulletsFired) {
                 endCombatPhaseTimer += delta;
-                
+
                 // Get the end phase delay from the current enemy's attack pattern, or use default
                 float currentEndPhaseDelay = DEFAULT_END_COMBAT_PHASE_DELAY;
-                
+
                 if (currentEnemy != null && currentEnemy.getCurrentPattern() != null) {
                     currentEndPhaseDelay = currentEnemy.getCurrentPattern().getConfig().getEndPhaseDelay();
                 }
-                
+
                 // We still process bullets during the end phase countdown
                 // Only mark combat as inactive once the timer is complete
                 if (endCombatPhaseTimer >= currentEndPhaseDelay) {
@@ -1307,7 +1862,7 @@ public class CombatScene implements Screen {
                 if (newBullets != null && !newBullets.isEmpty()) {
                     // Check if we're using a pattern that handles its own explosion sound
                     boolean shouldPlaySound = true;
-                    
+
                     // Get the current pattern
                     if (currentEnemy != null && currentEnemy.getCurrentPattern() != null) {
                         String patternName = currentEnemy.getCurrentPattern().getPatternName();
@@ -1317,12 +1872,12 @@ public class CombatScene implements Screen {
                         }
                         // Add more patterns here as needed that handle their own explosion sounds
                     }
-                    
+
                     // Only play the sound if needed
                     if (shouldPlaySound) {
                         explosionSound.play(0.175f);
                     }
-                    
+
                     // Convert List to Array.items
                     for (Bullet newBullet : newBullets) {
                         bullets.add(newBullet);
@@ -1343,7 +1898,7 @@ public class CombatScene implements Screen {
             }
 
             // Only check for player collision if we're still in active combat
-            if (inCombat && combatActive && 
+            if (inCombat && combatActive &&
                 bullet.getHitbox().overlaps(playerHitbox) &&
                 (!bullet.isTelegraphing() || bullet.getTelegraphTimer() >= bullet.getTelegraphDuration()) &&
                 !bullet.isFading()) {
@@ -1352,7 +1907,7 @@ public class CombatScene implements Screen {
 
                 // Handle damage and sounds
                 if (damageValue < 0) {
-                    increaseHP(damageValue);
+                    increaseHP(Math.abs(damageValue)); // Use Math.abs since increaseHP expects a positive value
                     healSound.setVolume(healSound.play(), 0.15f);
                     bullet.destroy();
                     bullets.removeIndex(i);
@@ -1469,25 +2024,16 @@ public class CombatScene implements Screen {
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
-        // Calculate a scale factor based on viewport size for consistent line thickness
-        float viewportWidth = viewport.getWorldWidth();
-        float viewportHeight = viewport.getWorldHeight();
-        float scaleFactor = Math.min(viewportWidth, viewportHeight);
-
-        // Set projection matrix with camera
+        // First pass: Draw filled telegraph paths (better representation of hitbox)
         shapeRenderer.setProjectionMatrix(camera.combined);
-        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
 
         for (Bullet bullet : bullets) {
             if (bullet.isTelegraphing()) {
                 float alpha = bullet.getTelegraphAlpha();
                 if (alpha <= 0) continue;  // Skip if alpha is 0 or negative
 
-                // Scale line width based on bullet size and screen size
-                float lineWidth = Math.max(2f, bullet.getSize() * scaleFactor);
-                Gdx.gl.glLineWidth(lineWidth);
-
-                // Get the telegraph start and current bullet position
+                // Get the telegraph start and end points
                 float[] startPoint = bullet.getTelegraphStartPoint();
                 float[] endpoint = bullet.getRemainingTelegraphEndPoint();
 
@@ -1498,29 +2044,166 @@ public class CombatScene implements Screen {
                 boolean isVisible = isLineVisibleInViewport(startPoint[0], startPoint[1], endpoint[0], endpoint[1]);
                 if (!isVisible) continue;
 
-                // Create a disco effect alternating between softer blue and purple
+                // Get the actual hitbox of the bullet for accurate representation
+                Rectangle hitbox = bullet.getHitbox();
+                float hitboxWidth = hitbox.width;
+
+                // Set color with low alpha for filled area
                 Color telegraphColor = new Color();
-
-                // Create faster flashing effect between soft blue and soft purple
+                // Create faster flashing effect between soft blue and purple
                 long currentTime = System.currentTimeMillis();
-                boolean flashPhase = (currentTime / 120) % 2 == 0; // Very fast flashing - 12.5 times per second
-
+                boolean flashPhase = (currentTime / 120) % 2 == 0;
+                // if (flashPhase) {
+                //     telegraphColor.set(0.5f, 0.6f, 1.0f, alpha * 0.15f); // Lower alpha for filled area
+                // } else {
+                //     telegraphColor.set(0.8f, 0.5f, 1.0f, alpha * 0.15f); // Lower alpha for filled area
+                // }
                 if (flashPhase) {
-                    // Brighter blue for better visibility
-                    telegraphColor.set(0.5f, 0.6f, 1.0f, alpha);
+                    telegraphColor.set(1.0f, 0.8f, 0.0f, alpha * 0.15f); // Yellow with lower alpha for filled area
                 } else {
-                    // Brighter purple for better visibility
-                    telegraphColor.set(0.8f, 0.5f, 1.0f, alpha);
+                    telegraphColor.set(1.0f, 0.5f, 0.0f, alpha * 0.15f); // Orange with lower alpha for filled area
                 }
 
-                // Draw telegraph line with disco color - ensure alpha is applied
-                shapeRenderer.setColor(telegraphColor);
-                shapeRenderer.line(startPoint[0], startPoint[1], endpoint[0], endpoint[1]);
+                // Calculate direction vector
+                float dirX = endpoint[0] - startPoint[0];
+                float dirY = endpoint[1] - startPoint[1];
+                float length = (float) Math.sqrt(dirX * dirX + dirY * dirY);
+
+                if (length > 0) {
+                    // Normalize direction
+                    dirX /= length;
+                    dirY /= length;
+
+                    // Calculate perpendicular vector for rectangle width
+                    float perpX = -dirY;
+                    float perpY = dirX;
+
+                    // Build rectangle vertices
+                    float halfWidth = hitboxWidth / 2;
+                    float[] verts = new float[8];
+
+                    // Top-left
+                    verts[0] = startPoint[0] + perpX * halfWidth;
+                    verts[1] = startPoint[1] + perpY * halfWidth;
+
+                    // Top-right
+                    verts[2] = startPoint[0] - perpX * halfWidth;
+                    verts[3] = startPoint[1] - perpY * halfWidth;
+
+                    // Bottom-right
+                    verts[4] = endpoint[0] - perpX * halfWidth;
+                    verts[5] = endpoint[1] - perpY * halfWidth;
+
+                    // Bottom-left
+                    verts[6] = endpoint[0] + perpX * halfWidth;
+                    verts[7] = endpoint[1] + perpY * halfWidth;
+
+                    shapeRenderer.setColor(telegraphColor);
+                    shapeRenderer.triangle(
+                        verts[0], verts[1],
+                        verts[2], verts[3],
+                        verts[4], verts[5]
+                    );
+                    shapeRenderer.triangle(
+                        verts[0], verts[1],
+                        verts[4], verts[5],
+                        verts[6], verts[7]
+                    );
+                }
+            }
+        }
+
+        shapeRenderer.end();
+
+        // Second pass: Draw outline for better visibility
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
+
+        for (Bullet bullet : bullets) {
+            if (bullet.isTelegraphing()) {
+                float alpha = bullet.getTelegraphAlpha();
+                if (alpha <= 0) continue;  // Skip if alpha is 0 or negative
+
+                // Get the telegraph start and end points
+                float[] startPoint = bullet.getTelegraphStartPoint();
+                float[] endpoint = bullet.getRemainingTelegraphEndPoint();
+
+                // Skip if already checked in first pass
+                if (startPoint == null || endpoint == null) continue;
+
+                boolean isVisible = isLineVisibleInViewport(startPoint[0], startPoint[1], endpoint[0], endpoint[1]);
+                if (!isVisible) continue;
+
+                // Get the actual hitbox of the bullet for accurate representation
+                Rectangle hitbox = bullet.getHitbox();
+                float hitboxWidth = hitbox.width;
+
+                // Set line width to match hitbox edge
+                Gdx.gl.glLineWidth(3f); // Consistent outline width
+
+                // Create faster flashing effect between soft blue and purple with higher alpha for outline
+                Color telegraphColor = new Color();
+                long currentTime = System.currentTimeMillis();
+                boolean flashPhase = (currentTime / 120) % 2 == 0;
+
+                // if (flashPhase) {
+                //     telegraphColor.set(0.5f, 0.6f, 1.0f, alpha); // Full alpha for outline
+                // } else {
+                //     telegraphColor.set(0.8f, 0.5f, 1.0f, alpha); // Full alpha for outline
+                // }
+                if (flashPhase) {
+                    telegraphColor.set(1.0f, 0.8f, 0.0f, alpha); // Yellow with full alpha for outline
+                } else {
+                    telegraphColor.set(1.0f, 0.5f, 0.0f, alpha); // Orange with full alpha for outline
+                }
+                // Calculate direction vector
+                float dirX = endpoint[0] - startPoint[0];
+                float dirY = endpoint[1] - startPoint[1];
+                float length = (float) Math.sqrt(dirX * dirX + dirY * dirY);
+
+                if (length > 0) {
+                    // Normalize direction
+                    dirX /= length;
+                    dirY /= length;
+
+                    // Calculate perpendicular vector for rectangle width
+                    float perpX = -dirY;
+                    float perpY = dirX;
+
+                    // Build rectangle vertices
+                    float halfWidth = hitboxWidth / 2;
+                    float[] verts = new float[8];
+
+                    // Top-left
+                    verts[0] = startPoint[0] + perpX * halfWidth;
+                    verts[1] = startPoint[1] + perpY * halfWidth;
+
+                    // Top-right
+                    verts[2] = startPoint[0] - perpX * halfWidth;
+                    verts[3] = startPoint[1] - perpY * halfWidth;
+
+                    // Bottom-right
+                    verts[4] = endpoint[0] - perpX * halfWidth;
+                    verts[5] = endpoint[1] - perpY * halfWidth;
+
+                    // Bottom-left
+                    verts[6] = endpoint[0] + perpX * halfWidth;
+                    verts[7] = endpoint[1] + perpY * halfWidth;
+
+                    // Draw outline
+                    shapeRenderer.setColor(telegraphColor);
+                    shapeRenderer.line(verts[0], verts[1], verts[2], verts[3]); // Top
+                    shapeRenderer.line(verts[2], verts[3], verts[4], verts[5]); // Right
+                    shapeRenderer.line(verts[4], verts[5], verts[6], verts[7]); // Bottom
+                    shapeRenderer.line(verts[6], verts[7], verts[0], verts[1]); // Left
+                }
             }
         }
 
         // End the shape renderer
         shapeRenderer.end();
+
+        // Reset line width to default
+        Gdx.gl.glLineWidth(1f);
     }
 
     /**
@@ -1662,13 +2345,7 @@ public class CombatScene implements Screen {
             switch (i) {
                 case 0:
                     font.draw(spriteBatch, player.getName(), x, playerNameY);
-                    // ADDED: Display current skill name below player name
-                    font.setColor(Color.CYAN);
-                    font.getData().setScale(0.9f);
-                    String skillName = "Skill: " + player.getCurrentSkillDisplayName().toString();
-                    font.draw(spriteBatch, skillName, x, playerNameY + 250);
-                    font.setColor(Color.WHITE);
-                    font.getData().setScale(1.2f);
+                    // Remove cyan skill debug text
                     break;
                 case 1:
                     // Draw LV text
@@ -1707,9 +2384,20 @@ public class CombatScene implements Screen {
         float startX = (screenWidth - totalButtonsWidth) / 2;
         float startY = 20;
 
+        // First, draw the solid black background for each button
+        shapeRenderer.setProjectionMatrix(camera.combined);
+        shapeRenderer.begin(ShapeRenderer.ShapeType.Filled);
+        shapeRenderer.setColor(Color.BLACK);
+
+        for (int i = 0; i < buttonLabels.length; i++) {
+            float x = startX + i * (BUTTON_WIDTH + BUTTON_MARGIN);
+            shapeRenderer.rect(x, startY, BUTTON_WIDTH, BUTTON_HEIGHT);
+        }
+
+        shapeRenderer.end();
+
         // Draw button outlines
         Gdx.gl.glLineWidth(4);
-        shapeRenderer.setProjectionMatrix(camera.combined);
         shapeRenderer.begin(ShapeRenderer.ShapeType.Line);
 
         for (int i = 0; i < buttonLabels.length; i++) {
@@ -1758,6 +2446,7 @@ public class CombatScene implements Screen {
                 float heartHeight = 28f;
                 float heartX = x + BUTTON_WIDTH / 5 - heartWidth / 2;
                 float heartY = y + BUTTON_HEIGHT / 2 - heartHeight / 2;
+                spriteBatch.setColor(1, 0, 0, 1);
                 spriteBatch.draw(playerTexture, heartX - 15, heartY, heartWidth, heartHeight);
             }
         }
@@ -1769,10 +2458,75 @@ public class CombatScene implements Screen {
         if (isVisible) {
             spriteBatch.setProjectionMatrix(camera.combined);
             spriteBatch.begin();
+
+            // Save the original color to restore it later
             Color prevColor = spriteBatch.getColor().cpy();
-            spriteBatch.setColor(1, 1, 1, 1); // Ensure full opacity for player
-            spriteBatch.draw(playerTexture, playerSprite.getX(), playerSprite.getY(), PLAYER_SIZE, PLAYER_SIZE);
+
+            // Check if player is in Death Defiance state
+            if (inDeathDefianceState) {
+                // Set up blend function for additive blending to make colors pop
+                spriteBatch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE);
+
+                // Draw a larger rainbow glow effect behind the player first
+                float glowSize = PLAYER_SIZE * 2.0f;
+                float glowX = playerSprite.getX() - (glowSize - PLAYER_SIZE) / 2;
+                float glowY = playerSprite.getY() - (glowSize - PLAYER_SIZE) / 2;
+
+                // Create intense rainbow glow
+                Color glowColor = new Color(rainbowColor);
+                glowColor.a = 0.8f;
+                spriteBatch.setColor(glowColor);
+                spriteBatch.draw(playerTexture, glowX, glowY, glowSize, glowSize);
+
+                // Draw rainbow colored afterimages - more of them, further out
+                for (int i = 1; i <= 6; i++) {
+                    float offset = i * 1.5f;
+                    float alpha = 0.4f - (i * 0.05f);
+
+                    // Get a color from different part of rainbow wheel
+                    float hueOffset = (i * 0.15f) % 1.0f;
+                    Color afterimageColor = hsvToRgb((rainbowColorTime + hueOffset) % 1.0f, 1.0f, 1.0f);
+                    afterimageColor.a = alpha;
+                    spriteBatch.setColor(afterimageColor);
+
+                    // Draw offset afterimages in 8 directions instead of 4 for fuller effect
+                    float angle = (i % 8) * MathUtils.PI / 4; // 8 directions evenly spread
+                    float offsetX = MathUtils.cos(angle) * offset;
+                    float offsetY = MathUtils.sin(angle) * offset;
+
+                    spriteBatch.draw(playerTexture,
+                                    playerSprite.getX() + offsetX,
+                                    playerSprite.getY() + offsetY,
+                                    PLAYER_SIZE,
+                                    PLAYER_SIZE);
+                }
+
+                // Draw the main player sprite with the current rainbow color
+                // This replaces the white color that let the original red show through
+                spriteBatch.setColor(rainbowColor);
+                spriteBatch.draw(playerTexture, playerSprite.getX(), playerSprite.getY(), PLAYER_SIZE, PLAYER_SIZE);
+
+                // Add one more pass with additive blending to make it really intense
+                spriteBatch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE);
+                Color intensityBoost = new Color(rainbowColor);
+                intensityBoost.a = 0.4f;
+                spriteBatch.setColor(intensityBoost);
+                spriteBatch.draw(playerTexture, playerSprite.getX(), playerSprite.getY(), PLAYER_SIZE, PLAYER_SIZE);
+
+                // Reset blend function
+                spriteBatch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+            } else {
+                // Regular player color
+                spriteBatch.setColor(1, 0, 0, 1); // Pure red for the heart
+                spriteBatch.draw(playerTexture, playerSprite.getX(), playerSprite.getY(), PLAYER_SIZE, PLAYER_SIZE);
+            }
+
+            // Always properly restore the original color to prevent affecting other rendering
             spriteBatch.setColor(prevColor);
+
+            // Always ensure blend function is reset to default to avoid affecting other rendering
+            spriteBatch.setBlendFunction(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+
             spriteBatch.end();
         }
     }
@@ -1783,11 +2537,20 @@ public class CombatScene implements Screen {
         // If transitioning, only allow camera shake control and not other input
         if (ScreenTransition.isTransitioning()) return;
 
-        final float MOVEMENT_SPEED = 300f;
+        // Get player movement speed from settings, or use default if settings unavailable
+        float movementSpeed = 300f; // Default fallback speed
+        try {
+            // Try to access the settings from the options screen
+            OptionsScreen.GameSettings settings = loadGameSettings();
+            if (settings != null) {
+                movementSpeed = settings.playerMovementSpeed;
+            }
+        } catch (Exception e) {
+            GameLogger.logError("Could not load movement speed from settings, using default", e);
+        }
 
         // Skip or escape input
         if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE)) {
-            GameLogger.logInfo("Escape key pressed in combat");
             if (inAttackSequence || delayedCombatPending) return;
             if (inCombat) return;
             if (currentEnemy.isDefeated()) return;
@@ -1798,6 +2561,12 @@ public class CombatScene implements Screen {
                 selectedItemIndex = 0;
                 currentItemPage = 0;
                 selectSound.play(0.5f);
+            } else if (showingSkillMenu) {
+                // Return from skill menu to main combat UI
+                showingSkillMenu = false;
+                selectedSkillIndex = 0;
+                currentSkillPage = 0;
+                selectSound.play(0.5f);
             }
             return;
         }
@@ -1805,11 +2574,25 @@ public class CombatScene implements Screen {
         if (currentEnemy.isDefeated()) {
             handleDefeatedEnemyInput();
         } else if (inCombat) {
-            handleActiveCombatInput(deltaTime, MOVEMENT_SPEED);
+            handleActiveCombatInput(deltaTime, movementSpeed);
         } else if (showingItemMenu) {
             handleItemMenuInput();
+        } else if (showingSkillMenu) {
+            handleSkillMenuInput();
         } else {
-            handleActiveCombatInput(deltaTime, MOVEMENT_SPEED);
+            // If dialogue is still typing or incomplete, allow skipping but not menu selection
+            if (isTyping || !dialogueCompleted) {
+                handleActiveCombatInput(deltaTime, movementSpeed);
+                for (int key : DIALOGUE_SKIP_KEYS) {
+                    if (Gdx.input.isKeyJustPressed(key)) {
+                        completeDialogue();
+                        return;
+                    }
+                }
+            } else {
+                // Only handle menu input after dialogue is complete
+                handleActiveCombatInput(deltaTime, movementSpeed);
+            }
         }
     }
 
@@ -1833,19 +2616,44 @@ public class CombatScene implements Screen {
                 player.gainExp(currentEnemy.getExpReward());
                 player.addGold(currentEnemy.getGoldReward());
                 didLevelUp = player.getLevel() > oldLevel;
-                if(didLevelUp) {
-                    levelUpSound.play(0.15f);
-                    savedDefeatMessage += "\nLEVEL UP! You are now level " + player.getLevel() + "!";
-                    player.heal(player.getMaxHP());
+
+                // Initial defeat message without level up text or stage unlock text
+                String defeatAndRewardText = currentEnemy.getDefeatDialogue() + "\n" + currentEnemy.getRewardDialogue();
+
+                // Check if this stage completion will unlock a new stage
+                int currentPlayerStage = player.getCurrentStage();
+                // Get the current challenging stage from StageSelectionScreen
+                int currentChallengingStage = StageSelectionScreen.getCurrentChallengingStage();
+
+                // Only unlock next stage if player completed their highest currently unlocked stage
+                // Special case for Stage 50 - don't unlock Stage 51, instead show credits
+                int stageBeingChallenged = StageSelectionScreen.getCurrentChallengingStage();
+                if (stageBeingChallenged == 50) {
+                    stageUnlocked = false;
+                    showCreditsAfterDefeat = true;
+                    GameLogger.logInfo("Stage 50 boss defeated! Transitioning to credits after dialog...");
                 }
-                
+                // For all other stages, follow normal unlocking logic
+                else if (currentChallengingStage > 0 && currentChallengingStage == currentPlayerStage) {
+                    // Unlock the next stage (current + 1)
+                    int nextStage = currentPlayerStage + 1;
+                    player.setCurrentStage(nextStage);
+                    stageUnlockedMessage = "Stage " + nextStage + " unlocked!";
+                    stageUnlocked = true;
+                    GameLogger.logInfo("Player unlocked stage: " + nextStage + " after completing stage " + currentChallengingStage);
+                } else {
+                    stageUnlocked = false;
+                    GameLogger.logInfo("No new stage unlocked. Completed stage " + currentChallengingStage +
+                                      " but highest unlocked stage is " + currentPlayerStage);
+                }
+
                 // Check if the defeated enemy is a boss, and if so, mark it as defeated
                 // A boss can be detected in two ways:
                 // 1. Enemy name contains "BOSS"
                 // 2. Current stage is a multiple of 10 (every 10th stage is a boss)
                 boolean isBoss = false;
                 int bossNumber = -1;
-                
+
                 // Check by name first
                 if (currentEnemy.getName().contains("BOSS")) {
                     isBoss = true;
@@ -1867,34 +2675,104 @@ public class CombatScene implements Screen {
                         GameLogger.logError("Error determining boss number from name: " + currentEnemy.getName(), e);
                     }
                 }
-                
+
                 // If not identified by name, check by stage number
-                if (!isBoss && player.getCurrentStage() % 10 == 0) {
+                // IMPORTANT: Use the currentChallengingStage instead of player.getCurrentStage()
+                // because getCurrentStage might already be updated to the next stage
+                int curStageBeingChallenged = StageSelectionScreen.getCurrentChallengingStage();
+                if (!isBoss && curStageBeingChallenged % 10 == 0) {
                     isBoss = true;
                     // Calculate boss number based on stage (stage 10 = boss 1, stage 20 = boss 2, etc.)
-                    bossNumber = player.getCurrentStage() / 10;
+                    bossNumber = curStageBeingChallenged / 10;
                     if (bossNumber > 5) bossNumber = 5; // Cap at 5 bosses total
+
+                    // Log for debugging
+                    GameLogger.logInfo("Stage " + curStageBeingChallenged + " recognized as boss stage with boss number " + bossNumber);
                 }
-                
+
                 // Mark the appropriate boss as defeated
                 if (isBoss && bossNumber > 0 && bossNumber <= 5) {
                     player.setBossDefeated(bossNumber, true);
                     GameLogger.logInfo("Boss " + bossNumber + " marked as defeated");
                 }
-                
-                setDialogueText(savedDefeatMessage);
+
+                // Prepare post-combat messages (level up and/or stage unlock)
+                StringBuilder postCombatMessage = new StringBuilder();
+
+                // If both level up and stage unlock occurred, combine them
+                if (didLevelUp && stageUnlocked) {
+                    levelUpSound.play(0.15f);
+                    player.fullRestore();
+                    postCombatMessage.append("LEVEL UP! You are now level ").append(player.getLevel()).append("!\n");
+                    postCombatMessage.append(stageUnlockedMessage);
+                    // Clear individual flags since we're handling both together
+                    didLevelUp = false;
+                    stageUnlocked = false;
+                    savedDefeatMessage = postCombatMessage.toString();
+                }
+                // If only level up occurred
+                else if (didLevelUp) {
+                    levelUpSound.play(0.15f);
+                    player.fullRestore();
+                    savedDefeatMessage = "LEVEL UP! You are now level " + player.getLevel() + "!";
+                }
+                // If only stage unlock occurred
+                else if (stageUnlocked) {
+                    savedDefeatMessage = stageUnlockedMessage;
+                    stageUnlocked = false;
+                }
+                else {
+                    // Neither level up nor stage unlock
+                    savedDefeatMessage = "";
+                }
+
+                setDialogueText(defeatAndRewardText);
                 showDefeatedEnemy = false;
                 pendingDefeatMessage = false;
+
+                // Trigger explosion effect now that the enemy is fully defeated and all messages shown
+                showEnemyExplosion = true;
+                enemyExplosionTimer = 0f;
+                enemyExploded = true; // Add this line to mark enemy as exploded
+
+                // Check if this was the stage 50 boss again
+                if (curStageBeingChallenged == 50) {
+                    showCreditsAfterDefeat = true;
+                }
+
+                // Store enemy position for explosion effect - center of enemy sprite
+                float screenCenterX = viewport.getWorldWidth() / 2;
+                // Store the center coordinates instead of top-left
+                enemyDeathX = screenCenterX;
+                enemyDeathY = arena.y + ARENA_DEFAULT_HEIGHT + 30 + currentEnemy.getHeight() / 2;
+
+                // Play explosion sound and shake screen
+                deathExplosionSound.play(0.4f);
+                startShake(0.5f, 10.0f);
+
                 updateHPTargets();
                 updateMPTargets();
+            } else if (!savedDefeatMessage.isEmpty()) {
+                // Show the combined message (could be level up, stage unlock, or both)
+                setDialogueText(savedDefeatMessage);
+                savedDefeatMessage = "";
             } else {
                 // Apply the temporary item usage since combat was successful
                 applyItemUsage();
 
-                // Reset blend function before transitioning to main menu
+                // Clear the player snapshot since we won the combat
+                clearPlayerSnapshot();
+
+                // Reset blend function before transitioning
                 Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
                 player.saveToFile();
-                transitionToMainMenu(ScreenTransition.TransitionType.CROSS_FADE);
+
+                // Check if we should show credits (for stage 50 boss) or return to main menu
+                if (showCreditsAfterDefeat) {
+                    transitionToCreditsScreen();
+                } else {
+                    transitionToMainMenu(ScreenTransition.TransitionType.CROSS_FADE);
+                }
             }
         }
     }
@@ -1911,32 +2789,29 @@ public class CombatScene implements Screen {
     }
 
     private void handleMovementInput(float deltaTime, float speed) {
+        // Get player movement speed from settings, or use default if settings unavailable
+        float movementSpeed = speed; // Use the passed-in speed which should come from settings
+        try {
+            // Try to access the settings from the options screen
+            OptionsScreen.GameSettings settings = loadGameSettings();
+            if (settings != null) {
+                movementSpeed = settings.playerMovementSpeed;
+            }
+        } catch (Exception e) {
+            GameLogger.logError("Could not load movement speed from settings, using default", e);
+        }
+
         if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
-            playerSprite.translateX(-speed * deltaTime);
+            playerSprite.translateX(-movementSpeed * deltaTime);
         }
         if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
-            playerSprite.translateX(speed * deltaTime);
+            playerSprite.translateX(movementSpeed * deltaTime);
         }
         if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
-            playerSprite.translateY(speed * deltaTime);
+            playerSprite.translateY(movementSpeed * deltaTime);
         }
         if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
-            playerSprite.translateY(-speed * deltaTime);
-        }
-    }
-
-    private void cycleSkill() {
-        Player.SkillType[] skills = Player.SkillType.values();
-        int currentIndex = player.getCurrentSkill().ordinal();
-        int nextIndex = (currentIndex + 1) % skills.length;
-
-        // Only set the skill if it's unlocked
-        while (nextIndex != currentIndex) {
-            if (player.isSkillUnlocked(skills[nextIndex])) {
-                player.setCurrentSkill(skills[nextIndex]);
-                break;
-            }
-            nextIndex = (nextIndex + 1) % skills.length;
+            playerSprite.translateY(-movementSpeed * deltaTime);
         }
     }
 
@@ -1947,10 +2822,13 @@ public class CombatScene implements Screen {
             selectedButton = -1;
             return;
         }
-        if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
-            cycleSkill();
-            player.playSkillSound();
-        }
+
+        // Remove the Q key cycling code
+        // if (Gdx.input.isKeyJustPressed(Input.Keys.Q)) {
+        //     cycleSkill();
+        //     player.playSkillSound();
+        // }
+
         if (Gdx.input.isKeyJustPressed(Input.Keys.LEFT)) {
             selectedButton = (selectedButton - 1 + buttonLabels.length) % buttonLabels.length;
             selectSound.play();
@@ -1966,21 +2844,20 @@ public class CombatScene implements Screen {
 
     private void selectButton() {
         switch (selectedButton) {
-            case 0: // FIGHT
-                // Check if player has enough MP for the current skill
-                if (player.hasEnoughMPForSkill(player.getCurrentSkill())) {
+            case 0: // FIGHT - Use basic slash directly
+                // Set current skill to BASIC
+                player.setCurrentSkill(Player.SkillType.BASIC);
+                // Check if player has enough MP (should always be true for basic)
+                if (player.hasEnoughMPForSkill(Player.SkillType.BASIC)) {
                     startAttackSequence();
-                } else {
-                    if (player.getCurrentSkill() == Player.SkillType.SKILL6) {
-                        setDialogueText("Not enough MP! Ultimate Technique requires more than 50% MP!");
-                    } else {
-                        setDialogueText("Not enough MP to use this skill!");
-                    }
                 }
                 break;
-            case 1: // ACT/SKILL
-                // Add logic for ACT
-                setDialogueText("You tried to reason with the enemy.\nBut they don't seem interested in talking.");
+            case 1: // SKILL
+                // Show skill menu
+                showingSkillMenu = true;
+                selectedSkillIndex = 0;
+                currentSkillPage = 0;
+                selectSound.play(0.5f);
                 break;
             case 2: // ITEM
                 // Show item menu
@@ -2005,25 +2882,36 @@ public class CombatScene implements Screen {
         playerX = playerSprite.getX();
         playerY = playerSprite.getY();
 
-        // Use target dimensions when in combat, current dimensions otherwise
-        float arenaWidth = inCombat ? COMBAT_ARENA_WIDTH : arena.width;
-        float arenaHeight = inCombat ? COMBAT_ARENA_HEIGHT : arena.height;
+        // If we're in combat and it's enemy's turn, allow player to move within arena bounds
+        if (inCombat && enemyTurn) {
+            // Use arena's current width and height for constraints
+            float clampedX = MathUtils.clamp(
+                playerX,
+                arena.x + ARENA_MARGIN,
+                arena.x + arena.width - PLAYER_SIZE - ARENA_MARGIN
+            );
 
-        float clampedX = MathUtils.clamp(
-            playerX,
-            arena.x + ARENA_MARGIN,
-            arena.x + arenaWidth - playerSprite.getWidth() - ARENA_MARGIN
-        );
+            float clampedY = MathUtils.clamp(
+                playerY,
+                arena.y + ARENA_MARGIN,
+                arena.y + arena.height - PLAYER_SIZE - ARENA_MARGIN
+            );
 
-        float clampedY = MathUtils.clamp(
-            playerY,
-            arena.y + ARENA_MARGIN,
-            arena.y + arenaHeight - playerSprite.getHeight() - ARENA_MARGIN
-        );
+            playerSprite.setPosition(clampedX, clampedY);
+            playerHitbox.x = clampedX;
+            playerHitbox.y = clampedY;
+        }
+        // If not in combat or in player's turn, ensure player is centered
+        // BUT only if we're not in the middle of active combat
+        else if (!inCombat || (!enemyTurn && !initialCombatCenteringApplied)) {
+            // Calculate the center of the arena
+            float centerX = arena.x + (arena.width / 2) - (PLAYER_SIZE / 2);
+            float centerY = arena.y + (arena.height / 2) - (PLAYER_SIZE / 2);
 
-        playerSprite.setPosition(clampedX, clampedY);
-        playerHitbox.x = clampedX;
-        playerHitbox.y = clampedY;
+            playerSprite.setPosition(centerX, centerY);
+            playerHitbox.x = centerX;
+            playerHitbox.y = centerY;
+        }
     }
 
     // =================== Initialization Methods ===================
@@ -2043,13 +2931,23 @@ public class CombatScene implements Screen {
     // =================== Rendering Methods ===================
     private void renderEnemy() {
         currentEnemy.update(Gdx.graphics.getDeltaTime());
-        float screenCenterX = viewport.getWorldWidth() / 2;
-        float enemyX = screenCenterX - (currentEnemy.getWidth() / 2);
-        float enemyY = arena.y + ARENA_DEFAULT_HEIGHT + 30;
+        float screenWidth = viewport.getWorldWidth();
+        float enemyWidth = currentEnemy.getWidth();
+        float enemyX = screenWidth / 2 - enemyWidth / 2;
+        float enemyY = arena.y + ARENA_DEFAULT_HEIGHT + 30; // Position above the arena
 
         spriteBatch.setProjectionMatrix(camera.combined);
         spriteBatch.begin();
+
+        // Store the original batch color
+        Color originalColor = spriteBatch.getColor().cpy();
+
+        // Draw the enemy
         currentEnemy.draw(spriteBatch, enemyX, enemyY);
+
+        // Restore the original color to prevent affecting other rendering
+        spriteBatch.setColor(originalColor);
+
         spriteBatch.end();
     }
 
@@ -2100,11 +2998,18 @@ public class CombatScene implements Screen {
         // Reset OpenGL blend function to normal before transitioning
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
 
+        // Restore player state to pre-combat snapshot since player is retreating
+        restorePlayerFromSnapshot();
+
         // Clear the temporary item usage when running away
         // No items should be lost if the player doesn't win the battle
         temporaryItemUsage.clear();
 
         backgroundMusic.stop();
+
+        // Set the returning from combat flag to true
+        returningFromCombat = true;
+
         game.setScreen(new ScreenTransition(
             game,
             this,
@@ -2131,7 +3036,7 @@ public class CombatScene implements Screen {
             int availableQuantity = 0;
 
             for (ConsumableItem mainItem : player.getInventory().getConsumableItems()) {
-                if (mainItem.getId().equals(combatItem.getId())) {
+                if (mainItem.getId().equals(combatItem.getId()) && mainItem.getTier().equals(combatItem.getTier())) {
                     itemExists = true;
                     availableQuantity = mainItem.getQuantity();
                     break;
@@ -2157,6 +3062,13 @@ public class CombatScene implements Screen {
         // Calculate starting index for current page
         int startIdx = currentItemPage * ITEMS_PER_PAGE;
         int endIdx = Math.min(startIdx + ITEMS_PER_PAGE, combatItems.size);
+        int itemsOnCurrentPage = endIdx - startIdx;
+
+        // Ensure selectedItemIndex is valid for the current page
+        selectedItemIndex = Math.min(selectedItemIndex, itemsOnCurrentPage - 1);
+        if (selectedItemIndex < 0 && itemsOnCurrentPage > 0) {
+            selectedItemIndex = 0;
+        }
 
         font.setColor(Color.WHITE);
         font.getData().setScale(1.5f);
@@ -2179,7 +3091,7 @@ public class CombatScene implements Screen {
             // Find how many are left after temporary usage
             int totalQuantity = 0;
             for (ConsumableItem mainItem : player.getInventory().getConsumableItems()) {
-                if (mainItem.getId().equals(item.getId())) {
+                if (mainItem.getId().equals(item.getId()) && mainItem.getTier().equals(item.getTier())) {
                     totalQuantity = mainItem.getQuantity();
                     break;
                 }
@@ -2212,7 +3124,7 @@ public class CombatScene implements Screen {
 
             // Draw item with proper spacing
             String itemText = prefix + itemName + quantity;
-            font.setColor(i == startIdx + selectedItemIndex ? Color.YELLOW : Color.WHITE);
+            font.setColor(gridPos == selectedItemIndex ? Color.YELLOW : Color.WHITE);
             font.draw(spriteBatch, itemText, x, y);
         }
 
@@ -2255,7 +3167,7 @@ public class CombatScene implements Screen {
             int availableQuantity = 0;
 
             for (ConsumableItem mainItem : player.getInventory().getConsumableItems()) {
-                if (mainItem.getId().equals(combatItem.getId())) {
+                if (mainItem.getId().equals(combatItem.getId()) && mainItem.getTier().equals(combatItem.getTier())) {
                     itemExists = true;
                     availableQuantity = mainItem.getQuantity();
                     break;
@@ -2286,6 +3198,9 @@ public class CombatScene implements Screen {
 
         // Ensure selectedItemIndex is valid
         selectedItemIndex = Math.min(selectedItemIndex, itemsOnCurrentPage - 1);
+        if (selectedItemIndex < 0) {
+            selectedItemIndex = 0;
+        }
 
         // Navigate between items
         if (Gdx.input.isKeyJustPressed(Input.Keys.RIGHT)) {
@@ -2297,10 +3212,7 @@ public class CombatScene implements Screen {
             } else if (currentItemPage < totalItemPages - 1) {
                 // At the rightmost column, go to next page
                 currentItemPage++;
-                selectedItemIndex = selectedItemIndex - (selectedItemIndex % ITEMS_PER_ROW); // Keep the same row
-                // Ensure the index is valid for the new page
-                int itemsOnNewPage = Math.min(ITEMS_PER_PAGE, combatItems.size - (currentItemPage * ITEMS_PER_PAGE));
-                selectedItemIndex = Math.min(selectedItemIndex, itemsOnNewPage - 1);
+                selectedItemIndex = 0; // Reset to first item on new page for consistency
                 selectSound.play(0.5f);
             }
         }
@@ -2313,12 +3225,11 @@ public class CombatScene implements Screen {
             } else if (currentItemPage > 0) {
                 // At the leftmost column, go to previous page
                 currentItemPage--;
-                // Move to the rightmost column of the same row
-                int itemsOnNewPage = Math.min(ITEMS_PER_PAGE, combatItems.size - (currentItemPage * ITEMS_PER_PAGE));
-                int targetColumn = ITEMS_PER_ROW - 1;
-                int targetRow = selectedItemIndex / ITEMS_PER_ROW;
-                int targetIndex = targetRow * ITEMS_PER_ROW + targetColumn;
-                selectedItemIndex = Math.min(targetIndex, itemsOnNewPage - 1);
+                // Calculate items on the previous page
+                int itemsOnPrevPage = Math.min(ITEMS_PER_PAGE,
+                    combatItems.size - (currentItemPage * ITEMS_PER_PAGE));
+                // Set index to last item on previous page
+                selectedItemIndex = itemsOnPrevPage - 1;
                 selectSound.play(0.5f);
             }
         }
@@ -2370,90 +3281,186 @@ public class CombatScene implements Screen {
      * Uses the currently selected item.
      */
     private void useSelectedItem() {
-        Array<ConsumableItem> combatItems = player.getInventory().getCombatItems();
-        int actualIndex = currentItemPage * ITEMS_PER_PAGE + selectedItemIndex;
+        // Get the filtered combat items first
+        Array<ConsumableItem> allCombatItems = player.getInventory().getCombatItems();
+        Array<ConsumableItem> combatItems = new Array<>();
 
-        if (actualIndex >= 0 && actualIndex < combatItems.size) {
-            ConsumableItem combatItem = combatItems.get(actualIndex);
-
-            // Check if this item still exists in the main inventory
+        // Filter out items that aren't available
+        for (ConsumableItem combatItem : allCombatItems) {
             boolean itemExists = false;
-            ConsumableItem mainInventoryItem = null;
+            int availableQuantity = 0;
 
-            for (ConsumableItem item : player.getInventory().getConsumableItems()) {
-                if (item.getId().equals(combatItem.getId())) {
+            for (ConsumableItem mainItem : player.getInventory().getConsumableItems()) {
+                if (mainItem.getId().equals(combatItem.getId()) && mainItem.getTier().equals(combatItem.getTier())) {
                     itemExists = true;
-                    mainInventoryItem = item;
+                    availableQuantity = mainItem.getQuantity();
                     break;
                 }
             }
 
-            // If the item no longer exists in the main inventory, don't allow using it
-            if (!itemExists) {
-                setDialogueText("You don't have any " + combatItem.getName() + " left!");
-                return;
+            if (itemExists) {
+                int usedCount = temporaryItemUsage.getOrDefault(combatItem.getId(), 0);
+                if (usedCount < availableQuantity) {
+                    combatItems.add(combatItem);
+                }
             }
-
-            // If we've already used all available of this item in this combat, don't allow using more
-            int usedCount = temporaryItemUsage.getOrDefault(combatItem.getId(), 0);
-            if (usedCount >= mainInventoryItem.getQuantity()) {
-                setDialogueText("You don't have any more " + combatItem.getName() + " to use!");
-                return;
-            }
-
-            // Apply item effect
-            String effectMessage = "";
-
-            switch (combatItem.getEffect()) {
-                case HEAL_HP:
-                    int oldHP = player.getCurrentHP();
-                    player.heal(combatItem.getEffectAmount());
-                    int healed = player.getCurrentHP() - oldHP;
-                    effectMessage = "You used " + combatItem.getName() + ".\nYou recovered " + healed + " HP!";
-                    healSound.play(0.15f);
-                    break;
-
-                case RESTORE_MP:
-                    int oldMP = player.getMP();
-                    player.increaseMP(combatItem.getEffectAmount());
-                    int restored = player.getMP() - oldMP;
-                    effectMessage = "You used " + combatItem.getName() + ".\nYou recovered " + restored + " MP!";
-                    manaRegenSound.play(0.15f);
-                    break;
-
-                case BUFF_ATK:
-                    effectMessage = "You used " + combatItem.getName() + ".\nATK INCREASED!";
-                    selectSound.play(0.15f);
-                    break;
-
-                case BUFF_DEF:
-                    effectMessage = "You used " + combatItem.getName() + ".\n*DEF INCREASED!";
-                    selectSound.play(0.15f);
-                    break;
-
-                default:
-                    effectMessage = "You used " + combatItem.getName() + ".";
-                    selectSound.play(0.15f);
-                    break;
-            }
-
-            // Track temporary item usage
-            String itemId = combatItem.getId();
-            temporaryItemUsage.put(itemId, temporaryItemUsage.getOrDefault(itemId, 0) + 1);
-
-            // Update player stats
-            updateHPTargets();
-            updateMPTargets();
-
-            // Set dialogue text to show effect
-            setDialogueText(effectMessage);
-
-            // Exit item menu
-            showingItemMenu = false;
-
-            // Start enemy turn (delayed)
-            startDelayedCombat();
         }
+
+        // Calculate the actual index based on current page and selection
+        int startIdx = currentItemPage * ITEMS_PER_PAGE;
+        int endIdx = Math.min(startIdx + ITEMS_PER_PAGE, combatItems.size);
+
+        // Validate selected index
+        if (selectedItemIndex < 0 || startIdx + selectedItemIndex >= combatItems.size) {
+            return; // Invalid selection
+        }
+
+        // Get the selected item
+        ConsumableItem combatItem = combatItems.get(startIdx + selectedItemIndex);
+
+        // Find corresponding item in main inventory
+        ConsumableItem mainInventoryItem = null;
+        for (ConsumableItem item : player.getInventory().getConsumableItems()) {
+            if (item.getId().equals(combatItem.getId()) && item.getTier().equals(combatItem.getTier())) {
+                mainInventoryItem = item;
+                break;
+            }
+        }
+
+        // If the item no longer exists in the main inventory, don't allow using it
+        if (mainInventoryItem == null) {
+            setDialogueText("You don't have any " + combatItem.getName() + " left!");
+            return;
+        }
+
+        // If we've already used all available of this item in this combat, don't allow using more
+        int usedCount = temporaryItemUsage.getOrDefault(combatItem.getId(), 0);
+        if (usedCount >= mainInventoryItem.getQuantity()) {
+            setDialogueText("You don't have any more " + combatItem.getName() + " to use!");
+            return;
+        }
+
+        // Clone the item to avoid modifying the original
+        ConsumableItem itemToUse = mainInventoryItem.clone();
+
+        // Apply item effect using the ItemEffectSystem, but don't actually consume from inventory yet
+        // We only mark it as used in combat and will apply actual consumption when combat is won
+        String effectMessage = "";
+        StringBuilder buffMessage = new StringBuilder();
+
+        // Record pre-effect values to calculate buffs applied
+        int attackBefore = player.getAttack();
+        int defenseBefore = player.getDefense();
+
+        // Track temporary item usage
+        String itemId = combatItem.getId();
+        temporaryItemUsage.put(itemId, temporaryItemUsage.getOrDefault(itemId, 0) + 1);
+
+        // Based on the item effect, play appropriate sounds and create message
+        switch (itemToUse.getEffect()) {
+            case HEAL_HP:
+                int oldHP = player.getCurrentHP();
+                ItemEffectSystem.applyItemEffect(player, itemToUse, true);
+                int healed = player.getCurrentHP() - oldHP;
+                effectMessage = "You used " + itemToUse.getName() + ".\nYou recovered " + healed + " HP!";
+                healSound.play(0.15f);
+                break;
+
+            case RESTORE_MP:
+                int oldMP = player.getMP();
+                ItemEffectSystem.applyItemEffect(player, itemToUse, true);
+                int restored = player.getMP() - oldMP;
+                effectMessage = "You used " + itemToUse.getName() + ".\nYou recovered " + restored + " MP!";
+                manaRegenSound.play(0.15f);
+                break;
+
+            case FULL_HEAL:
+                int oldFullHP = player.getCurrentHP();
+                ItemEffectSystem.applyItemEffect(player, itemToUse, true);
+                int fullHealed = player.getCurrentHP() - oldFullHP;
+                effectMessage = "You used " + itemToUse.getName() + ".\nYou fully recovered your HP!";
+                healSound.play(0.15f);
+                break;
+
+            case FULL_RESTORE:
+                ItemEffectSystem.applyItemEffect(player, itemToUse, true);
+                effectMessage = "You used " + itemToUse.getName() + ".\nYou fully recovered HP and MP!";
+                healSound.play(0.15f);
+                break;
+
+            case BUFF_ATK:
+                ItemEffectSystem.applyItemEffect(player, itemToUse, true);
+                effectMessage = "You used " + itemToUse.getName() + ".\nATK INCREASED!";
+                selectSound.play(0.15f);
+                break;
+
+            case BUFF_DEF:
+                ItemEffectSystem.applyItemEffect(player, itemToUse, true);
+                effectMessage = "You used " + itemToUse.getName() + ".\nDEF INCREASED!";
+                selectSound.play(0.15f);
+                break;
+
+            default:
+                ItemEffectSystem.applyItemEffect(player, itemToUse, true);
+                effectMessage = "You used " + itemToUse.getName() + ".";
+                selectSound.play(0.15f);
+                break;
+        }
+
+        // Check if any buffs were applied
+        int attackAfter = player.getAttack();
+        int defenseAfter = player.getDefense();
+
+        // If the item has buff duration, add buff message
+        if (itemToUse.getBuffDuration() > 0) {
+            buffMessage.append("\n");
+
+            if (itemToUse.getBuffAtkAmount() > 0) {
+                buffMessage.append("ATK +" + itemToUse.getBuffAtkAmount() + "!");
+
+                // Add space instead of newline if we'll also be adding DEF buff
+                if (itemToUse.getBuffDefAmount() > 0) {
+                    buffMessage.append(" ");
+                }
+            }
+
+            if (itemToUse.getBuffDefAmount() > 0) {
+                buffMessage.append("DEF +" + itemToUse.getBuffDefAmount() + "!");
+            }
+        }
+        // If there were stat changes without buff duration, it might be from equipment effects
+        else if (attackAfter > attackBefore || defenseAfter > defenseBefore) {
+            if (attackAfter > attackBefore) {
+                buffMessage.append("\nATK +" + (attackAfter - attackBefore) + "!");
+
+                // Add space instead of newline if we'll also be adding DEF buff
+                if (defenseAfter > defenseBefore) {
+                    buffMessage.append(" ");
+                }
+            }
+            if (defenseAfter > defenseBefore) {
+                buffMessage.append("\nDEF +" + (defenseAfter - defenseBefore) + "!");
+            }
+        }
+
+        // Combine the effect message with any buff messages
+        effectMessage += buffMessage.toString();
+
+        // Update player stats
+        updateHPTargets();
+        updateMPTargets();
+
+        // Set dialogue text to show effect
+        setDialogueText(effectMessage);
+
+        // Exit item menu
+        showingItemMenu = false;
+
+        // We shouldn't update buffs here as we haven't completed a turn yet
+        // Let buffs remain until after enemy's turn
+
+        // Start enemy turn (delayed)
+        startDelayedCombat();
     }
 
     /**
@@ -2466,12 +3473,22 @@ public class CombatScene implements Screen {
         Array<ConsumableItem> consumables = player.getInventory().getConsumableItems();
 
         // Apply usage counts
-        for (ConsumableItem item : consumables) {
-            Integer usageCount = temporaryItemUsage.get(item.getId());
-            if (usageCount != null && usageCount > 0) {
-                // Reduce item quantity by the number used during combat
-                for (int i = 0; i < usageCount; i++) {
-                    player.getInventory().useConsumableItem(item);
+        for (Map.Entry<String, Integer> usage : temporaryItemUsage.entrySet()) {
+            String itemId = usage.getKey();
+            int usageCount = usage.getValue();
+
+            // Skip if no usage
+            if (usageCount <= 0) continue;
+
+            // Find matching item in inventory
+            for (int i = 0; i < consumables.size; i++) {
+                ConsumableItem item = consumables.get(i);
+                if (item.getId().equals(itemId)) {
+                    // Reduce item quantity by the number used during combat
+                    for (int j = 0; j < usageCount; j++) {
+                        player.getInventory().useConsumableItem(item);
+                    }
+                    break;
                 }
             }
         }
@@ -2481,5 +3498,720 @@ public class CombatScene implements Screen {
 
         // Clear the temporary usage
         temporaryItemUsage.clear();
+    }
+
+    /**
+     * Gets the current enemy in this combat scene
+     * @return The current enemy
+     */
+    public Enemy getCurrentEnemy() {
+        return currentEnemy;
+    }
+
+    /**
+     * Creates a thorn damage number display for the enemy
+     * @param damage The amount of thorn damage dealt
+     */
+    public void createThornDamageNumber(int damage) {
+        if (currentEnemy == null) return;
+
+        float screenCenterX = viewport.getWorldWidth() / 2;
+        float enemyX = screenCenterX;
+        float enemyY = arena.y + ARENA_DEFAULT_HEIGHT + 30 + DAMAGE_NUMBER_ENEMY_Y_OFFSET;
+
+        // Use the special thorn damage creator
+        damageNumbers.add(DamageNumber.createThornDamage(damage, enemyX, enemyY));
+    }
+
+    /**
+     * Updates all active damage numbers
+     * @param delta Time elapsed since last update
+     */
+    private void updateDamageNumbers(float delta) {
+        for (int i = damageNumbers.size() - 1; i >= 0; i--) {
+            DamageNumber damageNumber = damageNumbers.get(i);
+            if (!damageNumber.update(delta)) {
+                damageNumbers.remove(i);
+            }
+        }
+    }
+
+    /**
+     * Renders all active damage numbers
+     */
+    private void renderDamageNumbers() {
+        if (damageNumbers.isEmpty()) return;
+
+        spriteBatch.setProjectionMatrix(camera.combined);
+        spriteBatch.begin();
+
+        for (DamageNumber damageNumber : damageNumbers) {
+            damageNumber.draw(spriteBatch, font);
+        }
+
+        spriteBatch.end();
+    }
+
+    // Add a public method that enemies can use to create damage numbers for thorn damage
+    public void addDamageNumber(int damage, float x, float y, boolean isHealing, boolean isCritical) {
+        damageNumbers.add(new DamageNumber(damage, x, y, isHealing, isCritical));
+    }
+
+    /**
+     * Public method to update and show the enemy HP bar
+     * This is called when thorn damage is applied during combat
+     */
+    public void updateAndShowEnemyHP() {
+        updateEnemyHPTargets();
+        showHPAfterDamage = true;
+        hpBarLingerTimer = -1f; // Reset to inactive state until animation finishes
+    }
+
+    /**
+     * Updates the Death Defiance state, including the rainbow effect and timer
+     */
+    private void updateDeathDefianceState(float delta) {
+        // Update the timer
+        deathDefianceTimer -= delta;
+
+        // Update rainbow color effect with an even faster cycle speed for more noticeable changes
+        rainbowColorTime += delta * RAINBOW_CYCLE_SPEED * 5.0f;
+        if (rainbowColorTime > 1.0f) {
+            rainbowColorTime -= 1.0f;
+        }
+
+        // Calculate rainbow color with maximum saturation and brightness for vivid effect
+        float hue = rainbowColorTime;
+        rainbowColor = hsvToRgb(hue, 1.0f, 1.0f);
+
+        // If the timer is up, exit the Death Defiance state
+        if (deathDefianceTimer <= 0) {
+            exitDeathDefianceState();
+        }
+    }
+
+    /**
+     * Converts HSV values to an RGB Color
+     * @param h Hue (0-1)
+     * @param s Saturation (0-1)
+     * @param v Value (0-1)
+     * @return Color object with the converted RGB values
+     */
+    private Color hsvToRgb(float h, float s, float v) {
+        int i = (int) (h * 6);
+        float f = h * 6 - i;
+        float p = v * (1 - s);
+        float q = v * (1 - f * s);
+        float t = v * (1 - (1 - f) * s);
+
+        float r, g, b;
+        switch (i % 6) {
+            case 0: r = v; g = t; b = p; break;
+            case 1: r = q; g = v; b = p; break;
+            case 2: r = p; g = v; b = t; break;
+            case 3: r = p; g = q; b = v; break;
+            case 4: r = t; g = p; b = v; break;
+            default: r = v; g = p; b = q; break;
+        }
+
+        return new Color(r, g, b, 1f);
+    }
+
+    /**
+     * Activates the Death Defiance effect when the player would otherwise die
+     */
+    private void activateDeathDefiance() {
+        // Mark as used for this combat - this is critical to ensure it can only be used once
+        deathDefianceAvailable = false;
+        GameLogger.logInfo("Death Defiance has been used! No longer available for this combat.");
+
+        // Activate the effect
+        inDeathDefianceState = true;
+        deathDefianceTimer = DEATH_DEFIANCE_DURATION;
+
+        // Also set immunity to true for consistent visuals and double protection
+        isImmune = true;
+        immunityTimer = 0;
+
+        // Play sound effect
+        deathDefianceSound.play(0.3f); // Increase volume for more impact
+
+        // Display message indicating Death Defiance activated
+        String defianceMessage = "DEATH DEFIANCE ACTIVATED!";
+
+        // Create a damage number at the top center of the screen with this message
+        float screenCenterX = viewport.getWorldWidth() / 2;
+        float screenTopY = viewport.getWorldHeight() - 50;
+
+        // Create a special "damage number" for the message that stays longer
+        DamageNumber messageNumber = new DamageNumber(0, screenCenterX, screenTopY, false, true);
+        messageNumber.setCustomText(defianceMessage);
+        messageNumber.setColor(Color.GOLD);
+        messageNumber.setLifetime(DEATH_DEFIANCE_DURATION * 0.8f);
+        damageNumbers.add(messageNumber);
+
+        // Heal the player
+        player.fullHeal();
+        updateHPTargets();
+
+        // Add massive defense buff for the duration - maximum defense boost value to ensure invulnerability
+        player.addStatBuff(BuffManager.StatType.DEFENSE, DEATH_DEFIANCE_DEFENSE_BOOST, (int)Math.ceil(DEATH_DEFIANCE_DURATION));
+
+        // Start a big shake effect for dramatic impact
+        startShake(0.75f, 20.0f);
+
+        // Create a healing number to show the full heal
+        float healNumberX = playerHitbox.x + playerHitbox.width / 2;
+        float healNumberY = playerHitbox.y + playerHitbox.height + DAMAGE_NUMBER_PLAYER_Y_OFFSET;
+        DamageNumber healNumber = new DamageNumber(player.getMaxHP(), healNumberX, healNumberY, true, true);
+        healNumber.setLifetime(DEATH_DEFIANCE_DURATION * 0.6f); // Show heal number for a bit shorter than the effect
+        damageNumbers.add(healNumber);
+    }
+
+    /**
+     * Exits the Death Defiance state
+     */
+    private void exitDeathDefianceState() {
+        // Only proceed if we're actually in Death Defiance state
+        if (!inDeathDefianceState) {
+            return;
+        }
+
+        inDeathDefianceState = false;
+        rainbowColor.set(Color.WHITE); // Reset color
+
+        // Keep deathDefianceAvailable as false for the rest of this combat
+        // This ensures it can't be used more than once per fight
+        deathDefianceAvailable = false;
+
+        // Make sure player is visible and not immune after leaving Death Defiance state
+        isVisible = true;
+        isImmune = false;
+
+        // Remove the massive defense buff
+        player.removeStatBuff(BuffManager.StatType.DEFENSE, DEATH_DEFIANCE_DEFENSE_BOOST);
+
+        // Show a message indicating Death Defiance has worn off (only if in active gameplay)
+        if (inCombat || !playerTurn) {
+            float screenCenterX = viewport.getWorldWidth() / 2;
+            float screenTopY = viewport.getWorldHeight() - 80;
+
+            DamageNumber wornOffMsg = new DamageNumber(0, screenCenterX, screenTopY, false, false);
+            wornOffMsg.setCustomText("Death Defiance Worn Off!");
+            wornOffMsg.setColor(Color.ORANGE);
+            wornOffMsg.setLifetime(1.5f);
+            damageNumbers.add(wornOffMsg);
+
+            GameLogger.logInfo("Death Defiance worn off and no longer available for this combat");
+        }
+    }
+
+    // Add this new method for rendering the explosion
+    private void renderEnemyExplosion() {
+        TextureRegion currentFrame = explosionAnimation.getKeyFrame(enemyExplosionTimer, false);
+        float explosionWidth = 250f;
+        float explosionHeight = 350f;
+
+        spriteBatch.setProjectionMatrix(camera.combined);
+        spriteBatch.begin();
+
+        // Draw explosion centered on the enemy's position
+        // Calculate the position to center the explosion
+        float explosionX = enemyDeathX - (explosionWidth / 2);
+        float explosionY = enemyDeathY - (explosionHeight / 2);
+
+        // Draw glow behind explosion
+        float glowIntensity = 1.0f - (enemyExplosionTimer / explosionAnimation.getAnimationDuration());
+        spriteBatch.setColor(1f, 0.7f, 0.2f, glowIntensity * 0.7f);
+        float glowWidth = explosionWidth * 1.2f;
+        float glowHeight = explosionHeight * 1.2f;
+        float glowX = explosionX - (glowWidth - explosionWidth) / 2f;
+        float glowY = explosionY - (glowHeight - explosionHeight) / 2f;
+        spriteBatch.draw(currentFrame, glowX, glowY, glowWidth, glowHeight);
+
+        // Draw actual explosion
+        spriteBatch.setColor(Color.WHITE);
+        spriteBatch.draw(currentFrame, explosionX, explosionY, explosionWidth, explosionHeight);
+
+        spriteBatch.end();
+    }
+
+    // Add skill menu rendering method
+    private void renderSkillMenu() {
+        spriteBatch.setProjectionMatrix(camera.combined);
+        spriteBatch.begin();
+
+        // Get player's unlocked skills (excluding BASIC)
+        Player.SkillType[] allSkills = Player.SkillType.values();
+        java.util.List<Player.SkillType> unlockedSkills = new java.util.ArrayList<>();
+
+        for (Player.SkillType skill : allSkills) {
+            // Skip the BASIC skill
+            if (skill != Player.SkillType.BASIC && player.isSkillUnlocked(skill)) {
+                unlockedSkills.add(skill);
+            }
+        }
+
+        // Calculate total pages
+        totalSkillPages = (int) Math.ceil((float) unlockedSkills.size() / SKILLS_PER_PAGE);
+        if (totalSkillPages == 0) totalSkillPages = 1;
+
+        // Make sure current page is valid
+        currentSkillPage = Math.min(currentSkillPage, totalSkillPages - 1);
+
+        // Calculate starting index for current page
+        int startIdx = currentSkillPage * SKILLS_PER_PAGE;
+        int endIdx = Math.min(startIdx + SKILLS_PER_PAGE, unlockedSkills.size());
+        int skillsOnCurrentPage = endIdx - startIdx;
+
+        // Ensure selectedSkillIndex is valid for the current page
+        selectedSkillIndex = Math.min(selectedSkillIndex, skillsOnCurrentPage - 1);
+        if (selectedSkillIndex < 0 && skillsOnCurrentPage > 0) {
+            selectedSkillIndex = 0;
+        }
+
+        font.setColor(Color.WHITE);
+        font.getData().setScale(1.5f);
+
+        float skillX = arena.x + SKILL_MENU_PADDING;
+        float skillY = arena.y + arena.height - SKILL_MENU_PADDING;
+        float rowHeight = 50f;
+        float maxSkillWidth = arena.width - (SKILL_MENU_PADDING * 2);
+
+        // Draw skills in a list
+        for (int i = startIdx; i < endIdx; i++) {
+            Player.SkillType skill = unlockedSkills.get(i);
+            int gridPos = i - startIdx;
+
+            float x = skillX;
+            float y = skillY - gridPos * rowHeight;
+
+            // Calculate MP cost
+            int mpCost = player.getSkillMPCost(skill);
+            String mpText = " (" + mpCost + " MP)";
+            String skillName = player.getSkillDisplayName(skill);
+            String prefix = "* ";
+
+            // Check if skill name will overflow
+            GlyphLayout layout = new GlyphLayout(font, prefix + skillName + mpText);
+            if (layout.width > maxSkillWidth) {
+                // Truncate name to fit
+                int maxChars = 0;
+                for (int j = 1; j <= skillName.length(); j++) {
+                    GlyphLayout testLayout = new GlyphLayout(font, prefix + skillName.substring(0, j) + "..." + mpText);
+                    if (testLayout.width > maxSkillWidth) {
+                        break;
+                    }
+                    maxChars = j;
+                }
+
+                if (maxChars > 0) {
+                    skillName = skillName.substring(0, maxChars) + "...";
+                }
+            }
+
+            // Draw skill with proper spacing
+            String skillText = prefix + skillName + mpText;
+            // Set color based on selection and MP availability
+            if (gridPos == selectedSkillIndex) {
+                font.setColor(Color.YELLOW); // Selected skill is yellow
+            } else if (player.hasFreeSkillCastAvailable()) {
+                font.setColor(Color.CYAN); // Free skill cast available - cyan
+            } else if (player.hasEnoughMPForSkill(skill)) {
+                font.setColor(Color.WHITE); // Normal usable skill is white
+            } else {
+                font.setColor(Color.GRAY); // Not enough MP - gray
+            }
+            font.draw(spriteBatch, skillText, x, y);
+        }
+
+        // Draw page indicator at bottom right (if multiple pages)
+        if (totalSkillPages > 1) {
+            String pageText = "*PG " + (currentSkillPage + 1) + "/" + totalSkillPages + "*";
+            GlyphLayout layout = new GlyphLayout(font, pageText);
+            float pageX = arena.x + arena.width - layout.width - PAGE_INDICATOR_PADDING;
+            float pageY = arena.y + PAGE_INDICATOR_PADDING + layout.height;
+            font.getData().setScale(1.0f);
+            font.setColor(Color.LIGHT_GRAY);
+            font.draw(spriteBatch, pageText, pageX, pageY);
+        }
+
+        // If no skills available
+        if (unlockedSkills.size() == 0) {
+            String noSkillsText = "No skills available";
+            GlyphLayout layout = new GlyphLayout(font, noSkillsText);
+            float textX = arena.x + (arena.width - layout.width) / 2;
+            float textY = arena.y + (arena.height + layout.height) / 2;
+            font.setColor(Color.WHITE);
+            font.draw(spriteBatch, noSkillsText, textX, textY);
+        }
+
+        spriteBatch.end();
+        font.getData().setScale(2.0f);
+    }
+
+    // Add skill menu input handling
+    private void handleSkillMenuInput() {
+        // Get unlocked skills (excluding BASIC)
+        Player.SkillType[] allSkills = Player.SkillType.values();
+        java.util.List<Player.SkillType> unlockedSkills = new java.util.ArrayList<>();
+
+        for (Player.SkillType skill : allSkills) {
+            if (skill != Player.SkillType.BASIC && player.isSkillUnlocked(skill)) {
+                unlockedSkills.add(skill);
+            }
+        }
+
+        // Calculate skills on current page
+        int startIdx = currentSkillPage * SKILLS_PER_PAGE;
+        int skillsOnCurrentPage = Math.min(SKILLS_PER_PAGE, unlockedSkills.size() - startIdx);
+
+        if (skillsOnCurrentPage <= 0) {
+            // No skills, just handle escape
+            if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) ||
+                Gdx.input.isKeyJustPressed(Input.Keys.BACKSPACE)) {
+                showingSkillMenu = false;
+                selectSound.play(0.5f);
+            }
+            return;
+        }
+
+        // Ensure selectedSkillIndex is valid
+        selectedSkillIndex = Math.min(selectedSkillIndex, skillsOnCurrentPage - 1);
+        if (selectedSkillIndex < 0) {
+            selectedSkillIndex = 0;
+        }
+
+        // Navigate between skills - vertical navigation only
+        if (Gdx.input.isKeyJustPressed(Input.Keys.DOWN)) {
+            if (selectedSkillIndex < skillsOnCurrentPage - 1) {
+                // Move down within the page
+                selectedSkillIndex++;
+                selectSound.play(0.5f);
+            } else if (currentSkillPage < totalSkillPages - 1) {
+                // At the bottom of page, go to next page
+                currentSkillPage++;
+                selectedSkillIndex = 0;
+                selectSound.play(0.5f);
+            }
+        }
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.UP)) {
+            if (selectedSkillIndex > 0) {
+                // Move up within the page
+                selectedSkillIndex--;
+                selectSound.play(0.5f);
+            } else if (currentSkillPage > 0) {
+                // At the top of page, go to previous page
+                currentSkillPage--;
+                // Set index to last skill on previous page
+                int skillsOnPrevPage = Math.min(SKILLS_PER_PAGE,
+                    unlockedSkills.size() - (currentSkillPage * SKILLS_PER_PAGE));
+                selectedSkillIndex = skillsOnPrevPage - 1;
+                selectSound.play(0.5f);
+            }
+        }
+
+        // Keep PAGE_UP/PAGE_DOWN navigation for accessibility
+        if (Gdx.input.isKeyJustPressed(Input.Keys.PAGE_DOWN) && currentSkillPage < totalSkillPages - 1) {
+            currentSkillPage++;
+            selectedSkillIndex = 0;
+            selectSound.play(0.5f);
+        }
+
+        if (Gdx.input.isKeyJustPressed(Input.Keys.PAGE_UP) && currentSkillPage > 0) {
+            currentSkillPage--;
+            selectedSkillIndex = 0;
+            selectSound.play(0.5f);
+        }
+
+        // Select skill
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ENTER) ||
+            Gdx.input.isKeyJustPressed(Input.Keys.Z)) {
+            useSelectedSkill();
+        }
+
+        // Cancel
+        if (Gdx.input.isKeyJustPressed(Input.Keys.ESCAPE) ||
+            Gdx.input.isKeyJustPressed(Input.Keys.BACKSPACE) ||
+            Gdx.input.isKeyJustPressed(Input.Keys.X)) {
+            showingSkillMenu = false;
+            selectSound.play(0.5f);
+        }
+    }
+
+    // Add method to use the selected skill
+    private void useSelectedSkill() {
+        // Get the unlocked skills (excluding BASIC)
+        Player.SkillType[] allSkills = Player.SkillType.values();
+        java.util.List<Player.SkillType> unlockedSkills = new java.util.ArrayList<>();
+
+        for (Player.SkillType skill : allSkills) {
+            if (skill != Player.SkillType.BASIC && player.isSkillUnlocked(skill)) {
+                unlockedSkills.add(skill);
+            }
+        }
+
+        // Calculate the actual index based on current page and selection
+        int startIdx = currentSkillPage * SKILLS_PER_PAGE;
+        int endIdx = Math.min(startIdx + SKILLS_PER_PAGE, unlockedSkills.size());
+
+        // Validate selected index
+        if (selectedSkillIndex < 0 || startIdx + selectedSkillIndex >= unlockedSkills.size()) {
+            return; // Invalid selection
+        }
+
+        // Get the selected skill
+        Player.SkillType selectedSkill = unlockedSkills.get(startIdx + selectedSkillIndex);
+
+        // Set as current skill
+        player.setCurrentSkill(selectedSkill);
+
+        // Check if player has enough MP for this skill
+        if (player.hasEnoughMPForSkill(selectedSkill)) {
+            // Close skill menu and start attack sequence
+            showingSkillMenu = false;
+            startAttackSequence();
+        } else {
+            // Close skill menu first, then show not enough MP message
+            showingSkillMenu = false;
+
+            // Show not enough MP message
+            if (selectedSkill == Player.SkillType.SKILL6) {
+                setDialogueText("Not enough MP! Silk End - I Am Cosmic Weave requires atleast 50% MP!");
+            } else {
+                setDialogueText("Not enough MP to use this skill!");
+            }
+
+            // Reset any in-progress actions to prevent conflicts
+            inAttackSequence = false;
+            delayedCombatPending = false;
+            combatKeyPressCount = 0;
+        }
+    }
+
+    /**
+     * Centers the player in the arena based on current arena dimensions
+     */
+    private void centerPlayer() {
+        // If in combat or transitioning to combat, use special calculation
+        if (inCombat) {
+            // Use the target arena dimensions
+            float screenWidth = viewport.getWorldWidth();
+            float centerX = (screenWidth - targetArenaWidth) / 2 + (targetArenaWidth / 2) - (PLAYER_SIZE / 2);
+
+            float buttonY = 20;
+            float buttonHeight = BUTTON_HEIGHT;
+            float marginAboveButtons = 60;
+            float hudY = buttonY + buttonHeight + marginAboveButtons;
+
+            float centerY = hudY + (targetArenaHeight / 2) - (PLAYER_SIZE / 2);
+
+            playerSprite.setPosition(centerX, centerY);
+            playerHitbox.x = centerX;
+            playerHitbox.y = centerY;
+        } else {
+            // When not in combat, use current arena dimensions
+            float centerX = arena.x + (arena.width / 2) - (PLAYER_SIZE / 2);
+            float centerY = arena.y + (arena.height / 2) - (PLAYER_SIZE / 2);
+
+            playerSprite.setPosition(centerX, centerY);
+            playerHitbox.x = centerX;
+            playerHitbox.y = centerY;
+        }
+    }
+
+    /**
+     * Loads or reloads the enemy's custom background texture.
+     * This can be called to attempt a reload if the texture wasn't successfully loaded at initialization.
+     */
+    private void loadEnemyBackground() {
+        if (currentEnemy == null || backgroundLoadAttempted) {
+            return;
+        }
+
+        if (currentEnemy.getCombatBackground() != null) {
+            try {
+                // Dispose existing textures if any
+                if (enemyBackgroundTexture != null) {
+                    enemyBackgroundTexture.dispose();
+                }
+                if (blurredBackgroundTexture != null) {
+                    blurredBackgroundTexture.dispose();
+                }
+                if (blurFrameBuffer != null) {
+                    blurFrameBuffer.dispose();
+                }
+
+                String backgroundPath = currentEnemy.getCombatBackground();
+                this.enemyBackgroundTexture = new Texture(Gdx.files.internal(backgroundPath));
+                GameLogger.logInfo("Loaded enemy background: " + backgroundPath);
+
+                // Initialize blur effect
+                initializeBackgroundBlur();
+            } catch (Exception e) {
+                GameLogger.logError("Failed to load enemy background", e);
+                this.enemyBackgroundTexture = null;
+                this.blurredBackgroundTexture = null;
+            }
+        }
+
+        this.backgroundLoadAttempted = true;
+    }
+
+    // Add method to create blurred background texture
+    private void initializeBackgroundBlur() {
+        try {
+            if (enemyBackgroundTexture == null) return;
+
+            float screenWidth = viewport.getWorldWidth();
+            float screenHeight = viewport.getWorldHeight();
+
+            // Create a frame buffer at half resolution for better performance
+            blurFrameBuffer = new FrameBuffer(Pixmap.Format.RGBA8888,
+                (int)screenWidth, (int)screenHeight, false);
+
+            // Create a shader for the gaussian blur
+            createBlurredBackgroundTexture();
+
+            backgroundBlurInitialized = true;
+        } catch (Exception e) {
+            GameLogger.logError("Failed to initialize background blur", e);
+            backgroundBlurInitialized = false;
+        }
+    }
+
+    // Method to actually create the blurred texture
+    private void createBlurredBackgroundTexture() {
+        if (enemyBackgroundTexture == null || blurFrameBuffer == null) return;
+
+        float screenWidth = viewport.getWorldWidth();
+        float screenHeight = viewport.getWorldHeight();
+
+        // Simple blur implementation - draw at reduced alpha multiple times with small offsets
+        blurFrameBuffer.begin();
+        Gdx.gl.glClearColor(0, 0, 0, 0);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
+
+        spriteBatch.begin();
+        // Draw the original texture
+        spriteBatch.setColor(1, 1, 1, 0.5f);
+        spriteBatch.draw(enemyBackgroundTexture, 0, 0, screenWidth, screenHeight);
+
+        // Draw multiple semi-transparent copies with offsets for a simple blur effect
+        spriteBatch.setColor(1, 1, 1, 0.3f);
+        float blurSize = BACKGROUND_BLUR_STRENGTH;
+
+        // Draw offset copies
+        for (int xOffset = -1; xOffset <= 1; xOffset++) {
+            for (int yOffset = -1; yOffset <= 1; yOffset++) {
+                if (xOffset == 0 && yOffset == 0) continue; // Skip center (original position)
+                spriteBatch.draw(enemyBackgroundTexture,
+                    xOffset * blurSize, yOffset * blurSize,
+                    screenWidth, screenHeight);
+            }
+        }
+
+        // Add a darker overlay for contrast with gameplay elements
+        spriteBatch.setColor(0, 0, 0, 0.1f);
+        spriteBatch.draw(enemyBackgroundTexture, 0, 0, screenWidth, screenHeight);
+
+        spriteBatch.end();
+        blurFrameBuffer.end();
+
+        // Convert the frame buffer to a texture
+        if (blurredBackgroundTexture != null) {
+            blurredBackgroundTexture.dispose();
+        }
+        blurredBackgroundTexture = blurFrameBuffer.getColorBufferTexture();
+    }
+
+    // Helper method to load game settings
+    private OptionsScreen.GameSettings loadGameSettings() {
+        try {
+            FileHandle file = Gdx.files.local("options.json");
+            if (file.exists()) {
+                Json json = new Json();
+                return json.fromJson(OptionsScreen.GameSettings.class, file.readString());
+            }
+        } catch (Exception e) {
+            GameLogger.logError("Failed to load game settings", e);
+        }
+        return new OptionsScreen.GameSettings(); // Return default settings if loading fails
+    }
+
+    // Add these new methods for player state snapshot
+
+    /**
+     * Takes a snapshot of the player's current state at the start of combat
+     */
+    private void takePlayerSnapshot() {
+        if (!snapshotTaken) {
+            try {
+                // Create a deep copy of the player
+                playerSnapshot = player.createSnapshot();
+                snapshotTaken = true;
+//                GameLogger.logInfo("Player snapshot taken at start of combat");
+            } catch (Exception e) {
+                GameLogger.logError("Failed to take player snapshot", e);
+            }
+        }
+    }
+
+    /**
+     * Restores the player's state from the snapshot (used when retreating or dying)
+     */
+    private void restorePlayerFromSnapshot() {
+        if (snapshotTaken && playerSnapshot != null) {
+            try {
+                // Restore player from snapshot
+                player.restoreFromSnapshot(playerSnapshot);
+//                GameLogger.logInfo("Player state restored from snapshot after retreat/death");
+
+                // Update UI values to match restored state
+                // updateHPTargets();
+                // updateMPTargets();
+
+                // Clear temporary item usage
+                temporaryItemUsage.clear();
+
+                // Save the restored state to disk to ensure persistence between screens
+                player.saveToFile();
+            } catch (Exception e) {
+                GameLogger.logError("Failed to restore player from snapshot", e);
+            }
+        }
+    }
+
+    /**
+     * Clears the player snapshot (used after successful combat)
+     */
+    private void clearPlayerSnapshot() {
+        playerSnapshot = null;
+        snapshotTaken = false;
+    }
+
+    /**
+     * Transitions to the credits screen after defeating the final boss
+     */
+    private void transitionToCreditsScreen() {
+        // Stop current music
+        if (backgroundMusic != null) {
+            backgroundMusic.stop();
+        }
+
+        // Save player data
+        player.saveToFile();
+
+        // Set returning from combat flag
+        returningFromCombat = true;
+
+        // Transition to credits screen
+        game.setScreen(new ScreenTransition(
+            game,
+            this,
+            new CreditsScreen(game),
+            ScreenTransition.TransitionType.FADE_TO_WHITE
+        ));
     }
 }

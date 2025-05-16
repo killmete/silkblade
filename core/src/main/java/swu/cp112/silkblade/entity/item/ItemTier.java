@@ -6,18 +6,21 @@ import com.badlogic.gdx.graphics.Color;
  * Represents the rarity tiers for items in the game.
  */
 public enum ItemTier {
-    NORMAL("Normal", new Color(1, 1, 1, 1)),              // White
-    RARE("Rare", new Color(0.2f, 0.5f, 1f, 1)),          // Blue
-    HEROIC("Heroic", new Color(0.7f, 0.3f, 1f, 1)),      // Purple
-    LEGENDARY("Legendary", new Color(1, 0.385f, 0.385f, 1)),  // Red
-    GENESIS("Genesis", null);                            // Rainbow animated (handled specially)
+    NORMAL("Normal", new Color(0.9f, 0.9f, 0.9f, 1.0f), false),
+    RARE("Rare", new Color(0.0f, 0.8f, 0.2f, 1.0f), false),
+    HEROIC("Heroic", new Color(0.4f, 0.4f, 1.0f, 1.0f), false),
+    LEGENDARY("Legendary", new Color(0.8f, 0.4f, 0.8f, 1.0f), false),
+    GENESIS("Genesis", new Color(0.3f, 0.1f, 0.8f, 1.0f), true),
+    END("End", new Color(1.0f, 0.5f, 0.0f, 1.0f), true);
 
     private final String displayName;
     private final Color color;
+    private final boolean animated;
 
-    ItemTier(String displayName, Color color) {
+    ItemTier(String displayName, Color color, boolean animated) {
         this.displayName = displayName;
         this.color = color;
+        this.animated = animated;
     }
 
     public String getDisplayName() {
@@ -29,9 +32,9 @@ public enum ItemTier {
     }
 
     /**
-     * Checks if this tier should use rainbow animation effect
+     * Checks if this tier should use animation effect
      */
     public boolean isAnimated() {
-        return this == GENESIS;
+        return animated;
     }
 }

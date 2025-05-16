@@ -45,11 +45,29 @@ public class EnemyAttackPatternManager {
         // If all patterns have been used, reset the unused patterns list
         if (unusedPatterns.isEmpty()) {
             unusedPatterns.addAll(availablePatterns);
+            swu.cp112.silkblade.util.GameLogger.logInfo("All patterns exhausted, resetting pattern pool with " + 
+                                                      availablePatterns.size() + " available patterns");
         }
 
-        // Select a random pattern from unused patterns
+        // Get the previous pattern before selecting a new one
+        EnemyAttackPattern previousPattern = currentPattern;
+        
+        // Select a random pattern
         int randomIndex = MathUtils.random(0, unusedPatterns.size() - 1);
         currentPattern = unusedPatterns.remove(randomIndex);
+        
+        // If we only had one pattern, immediately reset the pool for next selection
+        if (unusedPatterns.isEmpty()) {
+            unusedPatterns.addAll(availablePatterns);
+            // Don't include the pattern we just selected to avoid immediate repetition
+            unusedPatterns.remove(currentPattern);
+            swu.cp112.silkblade.util.GameLogger.logInfo("Last pattern used, resetting pattern pool with " + 
+                                                      unusedPatterns.size() + " available patterns");
+        }
+        
+        // Log the selected pattern
+        swu.cp112.silkblade.util.GameLogger.logInfo("Selected pattern: " + currentPattern.getPatternName() + 
+                                                   " (" + unusedPatterns.size() + " unused patterns remaining)");
 
         return currentPattern;
     }

@@ -11,7 +11,7 @@ import swu.cp112.silkblade.util.GameLogger;
 public class Inventory implements Json.Serializable {
 
     private static final int MAX_EQUIPPED_SLOTS = 3; // Weapon, Armor, Accessory
-    private static final int MAX_INVENTORY_SLOTS = 8; // Active inventory slots
+    private static final int MAX_INVENTORY_SLOTS = 99; // Active inventory slots
     private static final int MAX_COMBAT_ITEMS = 8; // Maximum combat items allowed
 
     private Array<Equipment> equippedItems;
@@ -40,94 +40,24 @@ public class Inventory implements Json.Serializable {
      * Add some starter items for testing.
      */
     private void addStarterItems() {
-        // Get items from the database
         ItemDatabase db = ItemDatabase.getInstance();
 
-        // Normal tier examples (already in starter items)
-        Equipment realKnife = db.getEquipmentById("WEAPON_REAL_KNIFE");
-        if (realKnife != null) {
-            addToInventory(realKnife);
+        Equipment lamphunSilk = db.getEquipmentById("WEAPON_SOFT_LAMPHUN_SILK");
+        if (lamphunSilk != null) {
+            addToInventory(lamphunSilk);
         }
-
-        Equipment heartLocket = db.getEquipmentById("ACCESSORY_HEART_LOCKET");
-        if (heartLocket != null) {
-            addToInventory(heartLocket);
+        Equipment lamphunShirt = db.getEquipmentById("ARMOR_LAMPHUN_SHIRT");
+        if (lamphunShirt != null) {
+            addToInventory(lamphunShirt);
         }
-
-        // Rare tier example items
-        Equipment azureBlade = db.getEquipmentById("TIER_RARE_WEAPON");
-        if (azureBlade != null) {
-            addToInventory(azureBlade);
+        Equipment spiritCharm = db.getEquipmentById("ACCESSORY_SPIRIT_CHARM");
+        if (spiritCharm != null) {
+            addToInventory(spiritCharm);
         }
-
-        Equipment cobaltMail = db.getEquipmentById("TIER_RARE_ARMOR");
-        if (cobaltMail != null) {
-            addToInventory(cobaltMail);
-        }
-
-        // Heroic tier example items
-        Equipment amethystSaber = db.getEquipmentById("TIER_HEROIC_WEAPON");
-        if (amethystSaber != null) {
-            addToInventory(amethystSaber);
-        }
-
-        Equipment violetPendant = db.getEquipmentById("TIER_HEROIC_ACCESSORY");
-        if (violetPendant != null) {
-            addToInventory(violetPendant);
-        }
-
-        // Legendary tier example item
-        Equipment excalibur = db.getEquipmentById("TIER_LEGENDARY_WEAPON");
-        if (excalibur != null) {
-            addToInventory(excalibur);
-        }
-
-        Equipment divine_plate = db.getEquipmentById("TIER_LEGENDARY_ARMOR");
-        if (divine_plate != null) {
-            addToInventory(divine_plate);
-        }
-
-        // Genesis tier example item
-        Equipment etherealCrown = db.getEquipmentById("TIER_GENESIS_ACCESSORY");
-        if (etherealCrown != null) {
-            addToInventory(etherealCrown);
-        }
-
-        // Add example consumables of different tiers
-        ConsumableItem elixir = db.getConsumableById("CONSUMABLE_ELIXIR");
-        if (elixir != null) {
-            elixir.increaseQuantity(2); // Start with 3 elixirs (1 + 2)
-            addConsumableItem(elixir);
-        }
-
-        ConsumableItem manaPotion = db.getConsumableById("CONSUMABLE_MANA_POTION");
-        if (manaPotion != null) {
-            manaPotion.increaseQuantity(98);
-            addConsumableItem(manaPotion);
-        }
-
-        // Add rare tier consumable
-        ConsumableItem greaterHealing = db.getConsumableById("TIER_RARE_POTION");
-        if (greaterHealing != null) {
-            addConsumableItem(greaterHealing);
-        }
-
-        // Add heroic tier consumable
-        ConsumableItem royalElixir = db.getConsumableById("TIER_HEROIC_POTION");
-        if (royalElixir != null) {
-            addConsumableItem(royalElixir);
-        }
-
-        // Add legendary tier consumable
-        ConsumableItem goldenNectar = db.getConsumableById("TIER_LEGENDARY_POTION");
-        if (goldenNectar != null) {
-            addConsumableItem(goldenNectar);
-        }
-
-        // Add genesis tier consumable
-        ConsumableItem essenceOfCreation = db.getConsumableById("TIER_GENESIS_POTION");
-        if (essenceOfCreation != null) {
-            addConsumableItem(essenceOfCreation);
+        ConsumableItem herbalDrink = db.getConsumableById("CONSUMABLE_HERBAL_DRINK");
+        if (herbalDrink != null) {
+            herbalDrink.increaseQuantity(9);
+            addConsumableItem(herbalDrink);
         }
     }
 
@@ -322,6 +252,49 @@ public class Inventory implements Json.Serializable {
     }
 
     /**
+     * Removes an equipment item from the inventory.
+     * Returns true if the item was found and removed, false otherwise.
+     */
+    public boolean removeFromInventory(Equipment item) {
+        if (item == null) {
+            return false;
+        }
+        
+        // Remove item from inventory
+        boolean removed = inventoryItems.removeValue(item, true);
+        
+        // Also remove from combat items if it's an accessory with combat effects
+        return removed;
+    }
+    
+    /**
+     * Removes a consumable item from the inventory.
+     * Also removes it from combat items if it was selected.
+     * Returns true if the item was found and removed, false otherwise.
+     */
+    public boolean removeConsumableItem(ConsumableItem item) {
+        if (item == null) {
+            return false;
+        }
+        
+        // Remove item from inventory
+        boolean removed = consumableItems.removeValue(item, true);
+        
+        // Also remove from combat items if it was selected
+        if (removed) {
+            for (int i = 0; i < combatItems.size; i++) {
+                ConsumableItem combatItem = combatItems.get(i);
+                if (combatItem.getName().equals(item.getName())) {
+                    combatItems.removeIndex(i);
+                    break;
+                }
+            }
+        }
+        
+        return removed;
+    }
+
+    /**
      * Moves an item from inventory to storage.
      */
     public boolean moveToStorage(Equipment item) {
@@ -428,6 +401,114 @@ public class Inventory implements Json.Serializable {
             }
         }
         return total;
+    }
+
+    /**
+     * Calculates the total max HP percentage bonus from all equipped items.
+     * Returns a decimal value (0.05f = 5%, 0.20f = 20%, etc.)
+     */
+    public float getTotalMaxHPPercentBonus() {
+        float total = 0;
+        for (Equipment item : equippedItems) {
+            if (item != null) {
+                total += item.getMaxHPPercentBonus();
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Calculates the total max MP percentage bonus from all equipped items.
+     * Returns a decimal value (0.05f = 5%, 0.20f = 20%, etc.)
+     */
+    public float getTotalMaxMPPercentBonus() {
+        float total = 0;
+        for (Equipment item : equippedItems) {
+            if (item != null) {
+                total += item.getMaxMPPercentBonus();
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Calculates the total attack percentage bonus from all equipped items.
+     * Returns a decimal value (0.05f = 5%, 0.20f = 20%, etc.)
+     */
+    public float getTotalAttackPercentBonus() {
+        float total = 0;
+        for (Equipment item : equippedItems) {
+            if (item != null) {
+                total += item.getAttackPercentBonus();
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Calculates the total defense percentage bonus from all equipped items.
+     * Returns a decimal value (0.05f = 5%, 0.20f = 20%, etc.)
+     */
+    public float getTotalDefensePercentBonus() {
+        float total = 0;
+        for (Equipment item : equippedItems) {
+            if (item != null) {
+                total += item.getDefensePercentBonus();
+            }
+        }
+        return total;
+    }
+
+    /**
+     * Checks if the equipped weapon has double attack capability.
+     * 
+     * @return true if the equipped weapon has double attack
+     */
+    public boolean hasDoubleAttack() {
+        // Weapon is at index 0 of equippedItems (based on the ordinal of EquipmentType.WEAPON)
+        Equipment weapon = equippedItems.get(0);
+        return weapon != null && weapon.hasDoubleAttack();
+    }
+    
+    /**
+     * Calculates the total thorn damage percentage from equipped armor.
+     * Returns a decimal value (0.15f = 15%, 0.30f = 30%, etc.)
+     * 
+     * @return The total thorn damage percentage
+     */
+    public float getTotalThornDamage() {
+        // Armor is at index 1 of equippedItems (based on the ordinal of EquipmentType.ARMOR)
+        Equipment armor = equippedItems.get(1);
+        return (armor != null) ? armor.getThornDamage() : 0f;
+    }
+
+    /**
+     * Checks if player has death defiance from any equipped item (one-time revival)
+     * 
+     * @return true if death defiance is available
+     */
+    public boolean hasDeathDefiance() {
+        for (Equipment item : equippedItems) {
+            if (item != null && item.hasDeathDefiance()) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Checks if player has free skill cast ability from any equipped item.
+     * This allows casting any skill (including ultimate) without MP cost once per battle.
+     * 
+     * @return true if free skill cast is available from an equipped item
+     */
+    public boolean hasFreeSkillCast() {
+        for (Equipment item : equippedItems) {
+            if (item != null && item.hasFreeSkillCast()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Json.Serializable implementation

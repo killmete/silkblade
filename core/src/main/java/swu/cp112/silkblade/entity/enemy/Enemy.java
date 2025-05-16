@@ -35,6 +35,19 @@ public interface Enemy {
     float getHeight();
     void draw(SpriteBatch batch, float x, float y);
     Color getPrimaryColor();
+    
+    /**
+     * Position methods
+     * Gets the X position of the enemy (center of sprite)
+     * @return The X coordinate of the enemy's center
+     */
+    float getX();
+    
+    /**
+     * Gets the Y position of the enemy (center of sprite)
+     * @return The Y coordinate of the enemy's center
+     */
+    float getY();
 
     /**
      * Combat system
@@ -88,4 +101,20 @@ public interface Enemy {
      * @param y The y-coordinate of the player
      */
     void updatePlayerPosition(float x, float y);
+
+    /**
+     * Gets the custom combat background path for this enemy, if any.
+     * @return The path to the background image, or null if no custom background is set.
+     */
+    default String getCombatBackground() {
+        return null;
+    }
+    
+    /**
+     * Gets the custom combat music path for this enemy, if any.
+     * @return The path to the music file, or null if no custom music is set.
+     */
+    default String getCombatMusic() {
+        return null;
+    }
 }

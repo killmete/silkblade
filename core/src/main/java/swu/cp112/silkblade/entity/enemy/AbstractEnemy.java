@@ -10,6 +10,7 @@ import swu.cp112.silkblade.pattern.EnemyAttackPattern;
 import swu.cp112.silkblade.pattern.EnemyAttackPatternManager;
 import swu.cp112.silkblade.entity.combat.Bullet;
 import swu.cp112.silkblade.screen.CombatScene;
+import swu.cp112.silkblade.util.GameLogger;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +59,9 @@ public abstract class AbstractEnemy implements Enemy {
     protected float shakeIntensity;
     protected float shakeX;
 
+    // Position properties
+    protected float centerX; // Center X position of the enemy
+    protected float centerY; // Center Y position of the enemy
 
     protected static final float LEVEL_SCALING_FACTOR = 1.2f;
 
@@ -82,6 +86,10 @@ public abstract class AbstractEnemy implements Enemy {
         initializeRewards();
         initializeDialogue();
         initializeShakeEffect();
+
+        // Initialize position at center of screen by default
+        this.centerX = Gdx.graphics.getWidth() / 2;
+        this.centerY = Gdx.graphics.getHeight() / 2;
 
         // Initialize pattern manager but DON'T select pattern yet
         this.patternManager = new EnemyAttackPatternManager();
@@ -116,6 +124,22 @@ public abstract class AbstractEnemy implements Enemy {
         this.rewardDialogue = "You earned " + this.xp + " XP and " + this.baht + " GOLD.";
     }
 
+    // Implementation of getX() and getY() methods
+    @Override
+    public float getX() {
+        return centerX;
+    }
+
+    @Override
+    public float getY() {
+        return centerY;
+    }
+
+    // Set position method to update enemy's center position
+    public void setPosition(float x, float y) {
+        this.centerX = x;
+        this.centerY = y;
+    }
 
     private void initializeCombatProperties() {
         this.arenaWidth = 250f;
@@ -181,13 +205,11 @@ public abstract class AbstractEnemy implements Enemy {
     }
     @Override
     public int getExpReward() {
-        System.out.println("Getting exp reward"); // Add debug print
         return xp;
     }
 
     @Override
     public int getGoldReward() {
-        System.out.println("Getting gold reward"); // Add debug print
         return baht;
     }
 
@@ -221,28 +243,41 @@ public abstract class AbstractEnemy implements Enemy {
         return primaryColor;
     }
 
-    // Combat methods
     @Override
     public void damage(int amount, boolean isCritical) {
         if (isCritical) {
-            if (amount > 0 && currentHP > 0) {
-                criticalSound.setVolume(criticalSound.play(), 0.15f);
-                startShake();
-            }
+            criticalSound.play(0.7f);
+            // Apply critical hit effect
+            startShake();
         } else {
-            if (amount > 0 && currentHP > 0) {
-                hitSound.setVolume(hitSound.play(), 0.15f);
-                startShake();
-            }
+            hitSound.play(0.7f);
         }
-        currentHP = Math.max(0, currentHP - amount);
+        this.currentHP = Math.max(0, this.currentHP - amount);
     }
 
     @Override
     public List<Bullet> generateAttack(float arenaX, float arenaY, float arenaWidth, float arenaHeight) {
-        return currentPattern != null ?
-            currentPattern.generateBullets(this, arenaX, arenaY, arenaWidth, arenaHeight) :
-            new ArrayList<>();
+        // Pass back to the current pattern if available
+        if (currentPattern != null) {
+            List<Bullet> generatedBullets = currentPattern.generateBullets(this, arenaX, arenaY, arenaWidth, arenaHeight);
+            
+            // Notify subclasses that bullets were spawned
+            if (generatedBullets != null && !generatedBullets.isEmpty()) {
+                onBulletsSpawned();
+            }
+            
+            return generatedBullets;
+        }
+        return new ArrayList<>();
+    }
+
+    /**
+     * Called when bullets are successfully generated and spawned.
+     * Override this in subclasses to track spawn cycles or implement pattern-based logic.
+     */
+    protected void onBulletsSpawned() {
+        // Default implementation does nothing
+        // Subclasses can override this to add custom logic
     }
 
     @Override
@@ -252,30 +287,34 @@ public abstract class AbstractEnemy implements Enemy {
 
     @Override
     public float getAttackInterval() {
-        return currentPattern != null ?
-            currentPattern.getConfig().getAttackInterval() :
-            attackInterval;
+        if (currentPattern != null) {
+            return currentPattern.getConfig().getAttackInterval();
+        }
+        return attackInterval;
     }
 
     @Override
     public float getArenaWidth() {
-        return currentPattern != null ?
-            currentPattern.getConfig().getArenaWidth() :
-            arenaWidth;
+        if (currentPattern != null) {
+            return currentPattern.getConfig().getArenaWidth();
+        }
+        return arenaWidth;
     }
 
     @Override
     public float getArenaHeight() {
-        return currentPattern != null ?
-            currentPattern.getConfig().getArenaHeight() :
-            arenaHeight;
+        if (currentPattern != null) {
+            return currentPattern.getConfig().getArenaHeight();
+        }
+        return arenaHeight;
     }
 
     @Override
     public int getMaxBullets() {
-        return currentPattern != null ?
-            currentPattern.getConfig().getMaxBullets() :
-            maxBullets;
+        if (currentPattern != null) {
+            return currentPattern.getConfig().getMaxBullets();
+        }
+        return maxBullets;
     }
 
     @Override
@@ -283,7 +322,6 @@ public abstract class AbstractEnemy implements Enemy {
         return currentPattern;
     }
 
-    // Turn management methods
     @Override
     public boolean isTurnActive() {
         return turnActive;
@@ -291,24 +329,33 @@ public abstract class AbstractEnemy implements Enemy {
 
     @Override
     public void startTurn() {
-        turnActive = true;
-        // Initialize pattern immediately when turn starts if no pattern is set
-        if (currentPattern == null) {
-            selectNewPattern();
+        this.turnActive = true;
+        
+        // Log before pattern selection
+        if (currentPattern != null) {
+            GameLogger.logInfo("Enemy turn started with pattern: " + currentPattern.getPatternName());
+        } else {
+            GameLogger.logInfo("Enemy turn started (no pattern yet)");
+        }
+        
+        // When enemy turn starts, select a random attack pattern if using patterns
+        selectNewPattern();
+        
+        // Log after pattern selection
+        if (currentPattern != null) {
+            GameLogger.logInfo("Current pattern after selection: " + currentPattern.getPatternName());
         }
     }
 
     @Override
     public void endTurn() {
-        turnActive = false;
-        // Select new pattern for next turn
-        selectNewPattern();
+        this.turnActive = false;
     }
 
-    // Dialogue methods
     @Override
     public String getTurnPassDialogue() {
-        if (randomTurnDialogues != null && !randomTurnDialogues.isEmpty()) {
+        // If we have custom dialogues registered, use those
+        if (!randomTurnDialogues.isEmpty()) {
             int nextIndex;
             do {
                 nextIndex = MathUtils.random(0, randomTurnDialogues.size() - 1);
@@ -317,6 +364,7 @@ public abstract class AbstractEnemy implements Enemy {
             lastDialogueIndex = nextIndex;
             return randomTurnDialogues.get(nextIndex);
         }
+
         return turnPassDialogue;
     }
 
@@ -418,6 +466,11 @@ public abstract class AbstractEnemy implements Enemy {
         Color prevColor = batch.getColor().cpy();
         batch.setColor(1, 1, 1, currentAlpha);
         float drawX = x + shakeX;
+
+        // Update enemy's center position based on the provided coordinates
+        this.centerX = drawX + width / 2;
+        this.centerY = y + height / 2;
+
         batch.draw(texture, drawX, y, width, height);
         batch.setColor(prevColor);
     }
@@ -468,6 +521,10 @@ public abstract class AbstractEnemy implements Enemy {
     // New method to handle pattern selection
     protected void selectNewPattern() {
         if (patternManager != null) {
+            // Store the old pattern for comparison
+            EnemyAttackPattern oldPattern = currentPattern;
+            
+            // Select a new pattern
             currentPattern = patternManager.selectRandomPattern();
 
             // Force a position update after pattern changes
@@ -477,10 +534,21 @@ public abstract class AbstractEnemy implements Enemy {
                 updatePlayerPosition(lastPlayerX, lastPlayerY);
             }
 
-            // Update turn pass dialogue with current pattern
-            clearRandomTurnDialogues();
-            if (currentPattern != null) {
-                setTurnPassDialogue(getName() + " prepares " + currentPattern.getPatternName() + "!");
+            // IMPORTANT: Always notify combat scene of pattern change to ensure arena dimensions
+            // are up-to-date, even if the pattern didn't change
+            if (combatScene != null) {
+                // Notify combat scene of pattern change to update arena dimensions
+                combatScene.updateArenaForPattern();
+                
+                if (currentPattern != oldPattern) {
+                    GameLogger.logInfo("Pattern changed to: " + currentPattern.getPatternName() + 
+                                      " - Arena: " + currentPattern.getConfig().getArenaWidth() + "x" + 
+                                      currentPattern.getConfig().getArenaHeight());
+                } else {
+                    GameLogger.logInfo("Using same pattern: " + currentPattern.getPatternName() + 
+                                      " - Arena: " + currentPattern.getConfig().getArenaWidth() + "x" + 
+                                      currentPattern.getConfig().getArenaHeight());
+                }
             }
         }
     }

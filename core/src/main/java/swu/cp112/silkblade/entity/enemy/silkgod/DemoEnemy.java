@@ -12,7 +12,7 @@ public class DemoEnemy extends AbstractEnemy {
     private boolean isEvolved = false;
 
     public DemoEnemy() {
-        super("Silk Overlord", 1000,
+        super("???????", 500,
             new Texture(Gdx.files.internal("enemy.png")),
             350f, 325f);
 
@@ -20,14 +20,16 @@ public class DemoEnemy extends AbstractEnemy {
         this.player = Player.loadFromFile();
 
         // Add all patterns first
+        // IMPORTANT: The order matters for pattern rotation
+        // We're NOT calling initializePatterns() here anymore to avoid selecting a pattern too early
+        // The first pattern will be selected when combat actually starts in startTurn()
         this.addAttackPattern(new TelegraphPattern());
         this.addAttackPattern(new CrossfirePattern());
         this.addAttackPattern(new ConvergingStarPattern());
         this.addAttackPattern(new RotatingStarPattern());
         this.addAttackPattern(new HomingExplosionPattern());
         this.addAttackPattern(new FallenStarPattern());
-        // Now initialize patterns after they've been added
-        initializePatterns();
+        // Don't initialize patterns yet - let combat scene handle it during startTurn
 
         // Initialize remaining properties
         initializeEnemy();
@@ -35,7 +37,7 @@ public class DemoEnemy extends AbstractEnemy {
 
     private void initializeEnemy() {
         // Set base rewards
-        this.setBaseRewards(1000, 250);
+        this.setBaseRewards(100000, 1000000);
 
         // Scale to player level
         scaleToPlayerLevel(player.getLevel());
@@ -54,11 +56,7 @@ public class DemoEnemy extends AbstractEnemy {
 
         // Add random turn dialogues
         String[] dialogues = {
-            "Random Dialogue 1",
-            "Random Dialogue 2",
-            "Random Dialogue 3",
-            "Random Dialogue 4",
-            "Random Dialogue 5"
+            ". . . . ."
         };
 
         for (String dialogue : dialogues) {

@@ -48,7 +48,7 @@ public class MainNavigationScreen implements Screen {
         static final String TITLE = "Where would you like to go?";
         static final String[] OPTIONS = {
             "Story Mode",
-            "Shop (Coming Soon)",
+            "Shop",
             "Inventory",
             "Back"
         };
@@ -189,10 +189,8 @@ public class MainNavigationScreen implements Screen {
             case 0: // Stages
                 goToStageSelection();
                 break;
-            case 1: // Shop (Coming Soon)
-                // Shop not implemented yet, just play sound
-                selectSound.play();
-                inputEnabled = true;
+            case 1: // Shop
+                goToShop();
                 break;
             case 2: // Inventory
                 goToInventory();
@@ -217,6 +215,15 @@ public class MainNavigationScreen implements Screen {
             game,
             this,
             new InventoryScreen(game),
+            ScreenTransition.TransitionType.CROSS_FADE
+        ));
+    }
+
+    private void goToShop() {
+        game.setScreen(new ScreenTransition(
+            game,
+            this,
+            new ShopScreen(game),
             ScreenTransition.TransitionType.CROSS_FADE
         ));
     }
