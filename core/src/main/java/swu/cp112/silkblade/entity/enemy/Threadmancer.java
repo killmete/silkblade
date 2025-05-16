@@ -55,7 +55,7 @@ public class Threadmancer extends AbstractEnemy {
 
     public Threadmancer() {
         super("Threadmancer", BASE_HP,
-                new Texture(Gdx.files.internal("enemy/threadmancer.png")),
+                new Texture(Gdx.files.internal("enemy/Threadmancer.png")),
                 320f, 320f);
 
         GameLogger.logInfo("Creating Threadmancer boss for stage 30");
