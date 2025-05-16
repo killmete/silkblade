@@ -1,6 +1,6 @@
 # SilkBlade Game Overview
 
-<img src="assets/logo.png" alt="SilkBlade Logo" width="300" align="center"/>
+<img src="assets/title.png" alt="SilkBlade Title" width="300" align="center"/>
 
 ## Table of Contents
 - [Game Concept](#game-concept)

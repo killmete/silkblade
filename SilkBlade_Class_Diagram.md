@@ -31,35 +31,36 @@ classDiagram
     Screen <|-- CreditsScreen
     
     %% Entity System - Enemies
-    interface Enemy {
-        +String getName()
-        +int getMaxHP()
-        +int getCurrentHP()
-        +void setHP(int)
-        +void damage(int, boolean)
-        +boolean isDefeated()
-        +Texture getTexture()
-        +void draw(SpriteBatch, float, float)
-        +List~Bullet~ generateAttack(float, float, float, float)
-        +EnemyAttackPattern getCurrentPattern()
-        +String getEncounterDialogue()
-        +int getExpReward()
-        +int getGoldReward()
+    class Enemy {
+        <<interface>>
+        +getName() String
+        +getMaxHP() int
+        +getCurrentHP() int
+        +setHP(int) void
+        +damage(int, boolean) void
+        +isDefeated() boolean
+        +getTexture() Texture
+        +draw(SpriteBatch, float, float) void
+        +generateAttack(float, float, float, float) List
+        +getCurrentPattern() EnemyAttackPattern
+        +getEncounterDialogue() String
+        +getExpReward() int
+        +getGoldReward() int
     }
     
     class AbstractEnemy {
-        #String name
-        #int maxHP
-        #int currentHP
-        #Texture texture
-        #float arenaWidth
-        #float arenaHeight
-        #float attackInterval
-        #int maxBullets
-        #int attackDamage
-        #EnemyAttackPatternManager patternManager
-        #EnemyAttackPattern currentPattern
-        +void scaleToPlayerLevel(int)
+        #name String
+        #maxHP int
+        #currentHP int
+        #texture Texture
+        #arenaWidth float
+        #arenaHeight float
+        #attackInterval float
+        #maxBullets int
+        #attackDamage int
+        #patternManager EnemyAttackPatternManager
+        #currentPattern EnemyAttackPattern
+        +scaleToPlayerLevel(int) void
     }
     
     Enemy <|.. AbstractEnemy
@@ -76,48 +77,49 @@ classDiagram
     
     %% Player System
     class Player {
-        -int level
-        -int maxHP
-        -int currentHP
-        -int maxMP
-        -int currentMP
-        -int attack
-        -int defense
-        -int experiencePoints
-        -List~Item~ inventory
-        -Map~String, Integer~ skills
-        +void levelUp()
-        +void addItem(Item)
-        +void useItem(Item)
-        +void saveToFile()
-        +static Player loadFromFile()
+        -level int
+        -maxHP int
+        -currentHP int
+        -maxMP int
+        -currentMP int
+        -attack int
+        -defense int
+        -experiencePoints int
+        -inventory List
+        -skills Map
+        +levelUp() void
+        +addItem(Item) void
+        +useItem(Item) void
+        +saveToFile() void
+        +loadFromFile() Player
     }
     
     %% Attack Pattern System
-    interface EnemyAttackPattern {
-        +List~Bullet~ generateBullets(Enemy, float, float, float, float)
-        +String getPatternName()
-        +AttackPatternConfig getConfig()
+    class EnemyAttackPattern {
+        <<interface>>
+        +generateBullets(Enemy, float, float, float, float) List
+        +getPatternName() String
+        +getConfig() AttackPatternConfig
     }
     
     class AttackPatternConfig {
-        -int minDamage
-        -int maxDamage
-        -float patternDuration
-        -float bulletSpeed
-        -int maxBullets
-        -float arenaWidth
-        -float arenaHeight
-        -Color bulletColor
-        -boolean usesCustomColors
-        -String patternName
-        -float bulletSize
+        -minDamage int
+        -maxDamage int
+        -patternDuration float
+        -bulletSpeed float
+        -maxBullets int
+        -arenaWidth float
+        -arenaHeight float
+        -bulletColor Color
+        -usesCustomColors boolean
+        -patternName String
+        -bulletSize float
     }
     
     class EnemyAttackPatternManager {
-        -List~EnemyAttackPattern~ patterns
-        +void addPattern(EnemyAttackPattern)
-        +EnemyAttackPattern selectRandomPattern()
+        -patterns List
+        +addPattern(EnemyAttackPattern) void
+        +selectRandomPattern() EnemyAttackPattern
     }
     
     EnemyAttackPattern --> AttackPatternConfig
@@ -126,30 +128,30 @@ classDiagram
     
     %% Combat System
     class Bullet {
-        -float damage
-        -float x
-        -float y
-        -float velocityX
-        -float velocityY
-        -float size
-        -Color color
-        -boolean isHealing
-        +void update(float)
-        +void render(SpriteBatch)
-        +Rectangle getHitbox()
+        -damage float
+        -x float
+        -y float
+        -velocityX float
+        -velocityY float
+        -size float
+        -color Color
+        -isHealing boolean
+        +update(float) void
+        +render(SpriteBatch) void
+        +getHitbox() Rectangle
     }
     
     class CombatScene {
-        -Player player
-        -Enemy currentEnemy
-        -Array~Bullet~ bullets
-        -boolean playerTurn
-        -boolean enemyTurn
-        -boolean inCombat
-        +void startCombat()
-        +void spawnBullet()
-        +void updateBullets(float)
-        +void decreaseHP(int)
+        -player Player
+        -currentEnemy Enemy
+        -bullets Array
+        -playerTurn boolean
+        -enemyTurn boolean
+        -inCombat boolean
+        +startCombat() void
+        +spawnBullet() void
+        +updateBullets(float) void
+        +decreaseHP(int) void
     }
     
     CombatScene --> Player
@@ -157,51 +159,53 @@ classDiagram
     CombatScene --> Bullet
     
     %% Item System
-    interface Item {
-        +String getName()
-        +String getDescription()
-        +int getValue()
-        +void use(Player)
-        +Texture getTexture()
+    class Item {
+        <<interface>>
+        +getName() String
+        +getDescription() String
+        +getValue() int
+        +use(Player) void
+        +getTexture() Texture
     }
     
     class ConsumableItem {
-        -int healAmount
-        -int manaAmount
-        -Map~String, Integer~ statBoosts
-        +void use(Player)
+        -healAmount int
+        -manaAmount int
+        -statBoosts Map
+        +use(Player) void
     }
     
     class Equipment {
-        -Slot equipmentSlot
-        -Map~StatType, Integer~ statBonuses
-        -Map~StatType, Float~ percentBonuses
-        +Slot getSlot()
-        +int getStatBonus(StatType)
-        +float getPercentBonus(StatType)
+        -equipmentSlot Slot
+        -statBonuses Map
+        -percentBonuses Map
+        +getSlot() Slot
+        +getStatBonus(StatType) int
+        +getPercentBonus(StatType) float
     }
     
     class ItemDatabase {
-        -static ItemDatabase instance
-        -Map~String, Item~ items
-        +static ItemDatabase getInstance()
-        +Item getItemById(String)
-        +List~Item~ getAllItems()
-        +List~Item~ getItemsByType(ItemType)
+        -instance ItemDatabase
+        -items Map
+        +getInstance() ItemDatabase
+        +getItemById(String) Item
+        +getAllItems() List
+        +getItemsByType(ItemType) List
     }
     
     class Inventory {
-        -List~Item~ items
-        -Map~Equipment.Slot, Equipment~ equippedItems
-        +void addItem(Item)
-        +void removeItem(Item)
-        +void useItem(Item, Player)
-        +void equipItem(Equipment)
-        +int getTotalAttackBonus()
-        +int getTotalDefenseBonus()
+        -items List
+        -equippedItems Map
+        +addItem(Item) void
+        +removeItem(Item) void
+        +useItem(Item, Player) void
+        +equipItem(Equipment) void
+        +getTotalAttackBonus() int
+        +getTotalDefenseBonus() int
     }
     
-    enum Equipment.Slot {
+    class EquipmentSlot {
+        <<enumeration>>
         WEAPON
         ARMOR
         ACCESSORY
@@ -212,32 +216,34 @@ classDiagram
     ItemDatabase --> Item
     Player --> Inventory
     Inventory --> Item
-    Inventory --> Equipment.Slot
-    Equipment --> Equipment.Slot
+    Inventory --> EquipmentSlot
+    Equipment --> EquipmentSlot
     
     %% Buff System
     class BuffManager {
-        -Player player
-        -Map~StatType, Integer~ statBuffs
-        -Map~StatType, Integer~ buffDurations
-        +void addBuff(StatType, int, int)
-        +void updateBuffs(float)
-        +int getAttackBuff()
-        +int getDefenseBuff()
-        +float getCritRateBuff()
+        -player Player
+        -statBuffs Map
+        -buffDurations Map
+        +addBuff(StatType, int, int) void
+        +updateBuffs(float) void
+        +getAttackBuff() int
+        +getDefenseBuff() int
+        +getCritRateBuff() float
     }
     
-    enum BuffManager.StatType {
+    class StatType {
+        <<enumeration>>
         ATTACK
         DEFENSE
         CRIT_RATE
     }
     
-    BuffManager --> BuffManager.StatType
+    BuffManager --> StatType
     Player --> BuffManager
     
     %% Skill System
-    enum Player.SkillType {
+    class SkillType {
+        <<enumeration>>
         BASIC
         SKILL1
         SKILL2
@@ -247,7 +253,7 @@ classDiagram
         SKILL6
     }
     
-    Player --> Player.SkillType
+    Player --> SkillType
 ```
 
 ## Key Relationships
