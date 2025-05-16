@@ -54,8 +54,7 @@ Comprehensive documentation is available to understand the project structure and
 
 #### Option 1: Download Release
 1. Download the latest release from the [Releases page](https://github.com/username/silkblade/releases)
-2. Extract the ZIP archive
-3. Run `silkblade.jar` or the platform-specific executable
+2. Run `silkblade.jar`
 
 #### Option 2: Build from Source
 1. Clone the repository:
@@ -77,11 +76,10 @@ Comprehensive documentation is available to understand the project structure and
 
 ## Controls
 
-- **WASD or Arrow Keys**: Move player during combat
-- **Z or Enter**: Confirm selection
-- **X or Escape**: Cancel/Back
-- **Space**: Skip dialogue
-- **Tab**: Quick access to inventory during exploration
+- **Arrow Keys**: Move player during combat
+- **Enter**: Confirm selection
+- **Escape**: Cancel/Back
+- **Z**: Skip dialogue
 
 ## Screenshots
 
