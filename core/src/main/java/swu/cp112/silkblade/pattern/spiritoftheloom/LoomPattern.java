@@ -141,13 +141,13 @@ public class LoomPattern implements EnemyAttackPattern {
             ((AbstractEnemy) enemy).getLastPlayerY() :
             arenaY + arenaHeight / 2;
 
-        // Get enemy position from the enemy object
-        float enemyX = enemy.getX();
-        float enemyY = enemy.getY();
+        // Get arena center coordinates instead of enemy position
+        float centerX = arenaX + arenaWidth / 2;
+        float centerY = arenaY + arenaHeight / 2;
 
         // Calculate player direction vector for orientation
-        float playerDirX = playerX - enemyX;
-        float playerDirY = playerY - enemyY;
+        float playerDirX = playerX - centerX;
+        float playerDirY = playerY - centerY;
         float playerDist = (float)Math.sqrt(playerDirX * playerDirX + playerDirY * playerDirY);
 
         // Normalize the player direction vector
@@ -211,7 +211,7 @@ public class LoomPattern implements EnemyAttackPattern {
         switch (currentPhase) {
             case 0:
                 // Phase 1: Thread Spiral Pattern (base pattern for all phases)
-                createThreadSpiralPattern(bullets, enemyX, enemyY, playerX, playerY, playerAngle,
+                createThreadSpiralPattern(bullets, centerX, centerY, playerX, playerY, playerAngle,
                                       baseSpeed, minDamage, maxDamage);
                 break;
 
@@ -219,12 +219,12 @@ public class LoomPattern implements EnemyAttackPattern {
                 // Phase 2: Combines Phase 1 and 2 patterns
                 if (stageGroup >= 2) {
                     // For stage group 2+, include spiral pattern too
-                    createThreadSpiralPattern(bullets, enemyX, enemyY, playerX, playerY, playerAngle,
+                    createThreadSpiralPattern(bullets, centerX, centerY, playerX, playerY, playerAngle,
                                           baseSpeed * 0.9f, minDamage, maxDamage);
                 }
 
                 // Then add parallel pattern
-                createParallelThreadPattern(bullets, enemyX, enemyY, playerX, playerY, playerAngle,
+                createParallelThreadPattern(bullets, centerX, centerY, playerX, playerY, playerAngle,
                                          baseSpeed, minDamage, maxDamage);
                 break;
 
@@ -232,24 +232,24 @@ public class LoomPattern implements EnemyAttackPattern {
                 // Phase 3: Combines all patterns based on stage group
                 if (stageGroup >= 3) {
                     // For stage group 3, include all patterns
-                    createThreadSpiralPattern(bullets, enemyX, enemyY, playerX, playerY, playerAngle,
+                    createThreadSpiralPattern(bullets, centerX, centerY, playerX, playerY, playerAngle,
                                           baseSpeed * 0.85f, minDamage * 0.85f, maxDamage * 0.85f);
 
-                    createParallelThreadPattern(bullets, enemyX, enemyY, playerX, playerY, playerAngle,
+                    createParallelThreadPattern(bullets, centerX, centerY, playerX, playerY, playerAngle,
                                              baseSpeed * 0.85f, minDamage * 0.85f, maxDamage * 0.85f);
                 } else if (stageGroup == 2) {
                     // For stage group 2, include spiral pattern and lighter parallel pattern
-                    createThreadSpiralPattern(bullets, enemyX, enemyY, playerX, playerY, playerAngle,
+                    createThreadSpiralPattern(bullets, centerX, centerY, playerX, playerY, playerAngle,
                                           baseSpeed * 0.9f, minDamage * 0.9f, maxDamage * 0.9f);
                 }
 
                 // All stage groups have radial pattern in phase 3
-                createRadialThreadPattern(bullets, enemyX, enemyY, playerX, playerY, playerAngle,
+                createRadialThreadPattern(bullets, centerX, centerY, playerX, playerY, playerAngle,
                                        baseSpeed, minDamage, maxDamage);
 
                 // Add cosmic weave in stage group 3
                 if (stageGroup >= 3 && isCosmicWeaveActive) {
-                    createCosmicWeavePattern(bullets, enemyX, enemyY, playerX, playerY, playerAngle,
+                    createCosmicWeavePattern(bullets, centerX, centerY, playerX, playerY, playerAngle,
                                            baseSpeed * 1.2f, minDamage * 1.5f, maxDamage * 1.5f);
                 }
                 break;
@@ -257,7 +257,7 @@ public class LoomPattern implements EnemyAttackPattern {
 
         // Occasionally spawn healing thread
         if (MathUtils.random() < HEALING_CHANCE) {
-            createHealingThread(bullets, enemyX, enemyY, playerX, playerY, baseSpeed * 0.7f);
+            createHealingThread(bullets, centerX, centerY, playerX, playerY, baseSpeed * 0.7f);
         }
 
         return bullets;
@@ -266,7 +266,7 @@ public class LoomPattern implements EnemyAttackPattern {
     /**
      * Creates a spiral pattern of thread bullets
      */
-    private void createThreadSpiralPattern(List<Bullet> bullets, float enemyX, float enemyY,
+    private void createThreadSpiralPattern(List<Bullet> bullets, float centerX, float centerY,
                                       float playerX, float playerY, float playerAngle, float speed,
                                       float minDamage, float maxDamage) {
         float damage = MathUtils.random(minDamage, maxDamage);
@@ -305,8 +305,8 @@ public class LoomPattern implements EnemyAttackPattern {
 
             Bullet bullet = new Bullet(
                 damage,
-                enemyX,
-                enemyY,
+                centerX + dirX * bulletSize,
+                centerY + dirY * bulletSize,
                 dirX * speed,
                 dirY * speed,
                 bulletSize,
@@ -325,8 +325,8 @@ public class LoomPattern implements EnemyAttackPattern {
                 // Create bullets that will home in after a delay
                 bullet = new Bullet(
                     damage,
-                    enemyX,
-                    enemyY,
+                    centerX + dirX * bulletSize,
+                    centerY + dirY * bulletSize,
                     dirX * speed,
                     dirY * speed,
                     bulletSize,
@@ -352,7 +352,7 @@ public class LoomPattern implements EnemyAttackPattern {
     /**
      * Creates parallel thread patterns that move across the arena
      */
-    private void createParallelThreadPattern(List<Bullet> bullets, float enemyX, float enemyY,
+    private void createParallelThreadPattern(List<Bullet> bullets, float centerX, float centerY,
                                         float playerX, float playerY, float playerAngle, float speed,
                                         float minDamage, float maxDamage) {
         float damage = MathUtils.random(minDamage, maxDamage);
@@ -411,8 +411,8 @@ public class LoomPattern implements EnemyAttackPattern {
                     float rotatedThreadY = threadPosX * MathUtils.sin(totalRotation) + threadPosY * MathUtils.cos(totalRotation);
 
                     // Calculate final positions
-                    float startX = enemyX + rotatedX + rotatedThreadX;
-                    float startY = enemyY + rotatedY + rotatedThreadY;
+                    float startX = centerX + rotatedX + rotatedThreadX;
+                    float startY = centerY + rotatedY + rotatedThreadY;
 
                     // Calculate base velocities with alternating directions
                     float baseVelX, baseVelY;
@@ -486,7 +486,7 @@ public class LoomPattern implements EnemyAttackPattern {
     /**
      * Creates a radial pattern of threads emanating from the arena edges
      */
-    private void createRadialThreadPattern(List<Bullet> bullets, float enemyX, float enemyY,
+    private void createRadialThreadPattern(List<Bullet> bullets, float centerX, float centerY,
                                       float playerX, float playerY, float playerAngle, float speed,
                                       float minDamage, float maxDamage) {
         float damage = MathUtils.random(minDamage, maxDamage);
@@ -507,14 +507,14 @@ public class LoomPattern implements EnemyAttackPattern {
 
         // Calculate rotated positions for the edges
         float[][] edgePositions = {
-            {enemyX - edgeDistance * MathUtils.cos(rotationRadians),
-             enemyY - edgeDistance * MathUtils.sin(rotationRadians)}, // Rotated Left
-            {enemyX + edgeDistance * MathUtils.cos(rotationRadians),
-             enemyY + edgeDistance * MathUtils.sin(rotationRadians)}, // Rotated Right
-            {enemyX + edgeDistance * MathUtils.sin(rotationRadians),
-             enemyY - edgeDistance * MathUtils.cos(rotationRadians)}, // Rotated Bottom
-            {enemyX - edgeDistance * MathUtils.sin(rotationRadians),
-             enemyY + edgeDistance * MathUtils.cos(rotationRadians)}, // Rotated Top
+            {centerX - edgeDistance * MathUtils.cos(rotationRadians),
+             centerY - edgeDistance * MathUtils.sin(rotationRadians)}, // Rotated Left
+            {centerX + edgeDistance * MathUtils.cos(rotationRadians),
+             centerY + edgeDistance * MathUtils.sin(rotationRadians)}, // Rotated Right
+            {centerX + edgeDistance * MathUtils.sin(rotationRadians),
+             centerY - edgeDistance * MathUtils.cos(rotationRadians)}, // Rotated Bottom
+            {centerX - edgeDistance * MathUtils.sin(rotationRadians),
+             centerY + edgeDistance * MathUtils.cos(rotationRadians)}, // Rotated Top
         };
 
         // For each edge position
@@ -604,7 +604,7 @@ public class LoomPattern implements EnemyAttackPattern {
     /**
      * Creates a complex cosmic weave pattern (only for stage group 3)
      */
-    private void createCosmicWeavePattern(List<Bullet> bullets, float enemyX, float enemyY,
+    private void createCosmicWeavePattern(List<Bullet> bullets, float centerX, float centerY,
                                      float playerX, float playerY, float playerAngle, float speed,
                                      float minDamage, float maxDamage) {
         if (stageGroup < 3) return; // Only available in stage group 3
@@ -628,8 +628,8 @@ public class LoomPattern implements EnemyAttackPattern {
             float radians = angle * MathUtils.degreesToRadians;
 
             // Calculate spawn position in a circle around the enemy
-            float spawnX = enemyX + MathUtils.cos(radians) * radius;
-            float spawnY = enemyY + MathUtils.sin(radians) * radius;
+            float spawnX = centerX + MathUtils.cos(radians) * radius;
+            float spawnY = centerY + MathUtils.sin(radians) * radius;
 
             // Calculate direction toward the player
             float dx = playerX - spawnX;
@@ -720,11 +720,11 @@ public class LoomPattern implements EnemyAttackPattern {
     /**
      * Creates a healing thread that moves toward the player
      */
-    private void createHealingThread(List<Bullet> bullets, float enemyX, float enemyY,
+    private void createHealingThread(List<Bullet> bullets, float centerX, float centerY,
                                 float playerX, float playerY, float speed) {
         // Calculate player direction angle
-        float playerDirX = playerX - enemyX;
-        float playerDirY = playerY - enemyY;
+        float playerDirX = playerX - centerX;
+        float playerDirY = playerY - centerY;
         float playerDist = (float)Math.sqrt(playerDirX * playerDirX + playerDirY * playerDirY);
         float playerAngle = 0f;
 
@@ -738,8 +738,8 @@ public class LoomPattern implements EnemyAttackPattern {
         float angle = (MathUtils.random(360f) + playerAngle) * MathUtils.degreesToRadians;
         float distance = 150f;
 
-        float spawnX = enemyX + MathUtils.cos(angle) * distance;
-        float spawnY = enemyY + MathUtils.sin(angle) * distance;
+        float spawnX = centerX + MathUtils.cos(angle) * distance;
+        float spawnY = centerY + MathUtils.sin(angle) * distance;
 
         // Calculate direction toward player
         float dx = playerX - spawnX;

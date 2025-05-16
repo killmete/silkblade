@@ -2950,10 +2950,16 @@ public class CombatScene implements Screen {
     // =================== Rendering Methods ===================
     private void renderEnemy() {
         currentEnemy.update(Gdx.graphics.getDeltaTime());
+        
+        // Use viewport's world dimensions to calculate position
         float screenWidth = viewport.getWorldWidth();
         float enemyWidth = currentEnemy.getWidth();
         float enemyX = screenWidth / 2 - enemyWidth / 2;
         float enemyY = arena.y + ARENA_DEFAULT_HEIGHT + 30; // Position above the arena
+        
+        // Explicitly update the enemy's internal position to match the rendering position
+        // This ensures getX() and getY() return coordinates that are consistent with the rendering
+        currentEnemy.setPosition(enemyX + enemyWidth/2, enemyY + currentEnemy.getHeight()/2);
 
         spriteBatch.setProjectionMatrix(camera.combined);
         spriteBatch.begin();

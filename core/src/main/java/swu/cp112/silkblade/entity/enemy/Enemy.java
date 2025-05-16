@@ -48,6 +48,13 @@ public interface Enemy {
      * @return The Y coordinate of the enemy's center
      */
     float getY();
+    
+    /**
+     * Sets the enemy's center position
+     * @param x The X coordinate for the enemy's center
+     * @param y The Y coordinate for the enemy's center
+     */
+    void setPosition(float x, float y);
 
     /**
      * Combat system

@@ -136,6 +136,7 @@ public abstract class AbstractEnemy implements Enemy {
     }
 
     // Set position method to update enemy's center position
+    @Override
     public void setPosition(float x, float y) {
         this.centerX = x;
         this.centerY = y;

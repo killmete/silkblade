@@ -106,7 +106,7 @@ public class BasicAttackPattern implements EnemyAttackPattern {
         } else if (stageNumber >= 4 && stageNumber <= 6) {
             // Phase 2 (Stages 4-6)
             phase = 2;
-            bulletCount = 5;
+            bulletCount = 4;
             bulletSpeed = 200f;
             bulletSize = 9f;
         } else {

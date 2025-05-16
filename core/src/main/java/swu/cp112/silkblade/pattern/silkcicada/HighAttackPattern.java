@@ -71,8 +71,8 @@ public class HighAttackPattern implements EnemyAttackPattern {
             arenaY + arenaHeight / 2;
 
         // Get enemy position from the enemy object
-        float enemyX = enemy.getX();
-        float enemyY = enemy.getY();
+        float enemyX = arenaX + arenaWidth / 2;
+        float enemyY = (arenaY + arenaHeight / 2) + 75;
 
         // Calculate attack parameters based on enemy's state
         float damageMultiplier = 1.0f + (enemy.getAttackDamage() * 0.05f);
