@@ -396,7 +396,7 @@ public class CombatScene implements Screen {
             dialogueArenaHeight = ARENA_DEFAULT_HEIGHT;
 
             // Initialize explosion animation
-            explosionAtlas = new TextureAtlas(Gdx.files.internal("assets/atlas/explosion_atlas.atlas"));
+            explosionAtlas = new TextureAtlas(Gdx.files.internal("atlas/explosion_atlas.atlas"));
             explosionAnimation = new Animation<>(EXPLOSION_FRAME_DURATION, explosionAtlas.findRegions("explosion_frame"));
 
         } catch (Exception e) {
