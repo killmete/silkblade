@@ -1,7 +1,7 @@
 # SilkBlade
 
 <p align="center">
-  <img src="assets/logo.png" alt="SilkBlade Logo" width="300"/>
+  <img src="assets/title.png" alt="SilkBlade Logo" width="300"/>
   <br>
   <em>A turn-based bullet-hell RPG built with LibGDX</em>
 </p>
