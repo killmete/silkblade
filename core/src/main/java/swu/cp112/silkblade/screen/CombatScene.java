@@ -2820,16 +2820,16 @@ public class CombatScene implements Screen {
             GameLogger.logError("Could not load movement speed from settings, using default", e);
         }
 
-        if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
+        if (Gdx.input.isKeyPressed(Input.Keys.LEFT) || Gdx.input.isKeyPressed(Input.Keys.A)) {
             playerSprite.translateX(-movementSpeed * deltaTime);
         }
-        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
+        if (Gdx.input.isKeyPressed(Input.Keys.RIGHT) || Gdx.input.isKeyPressed(Input.Keys.D)) {
             playerSprite.translateX(movementSpeed * deltaTime);
         }
-        if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
+        if (Gdx.input.isKeyPressed(Input.Keys.UP) || Gdx.input.isKeyPressed(Input.Keys.W)) {
             playerSprite.translateY(movementSpeed * deltaTime);
         }
-        if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
+        if (Gdx.input.isKeyPressed(Input.Keys.DOWN) || Gdx.input.isKeyPressed(Input.Keys.S)) {
             playerSprite.translateY(-movementSpeed * deltaTime);
         }
     }
@@ -2950,13 +2950,13 @@ public class CombatScene implements Screen {
     // =================== Rendering Methods ===================
     private void renderEnemy() {
         currentEnemy.update(Gdx.graphics.getDeltaTime());
-        
+
         // Use viewport's world dimensions to calculate position
         float screenWidth = viewport.getWorldWidth();
         float enemyWidth = currentEnemy.getWidth();
         float enemyX = screenWidth / 2 - enemyWidth / 2;
         float enemyY = arena.y + ARENA_DEFAULT_HEIGHT + 30; // Position above the arena
-        
+
         // Explicitly update the enemy's internal position to match the rendering position
         // This ensures getX() and getY() return coordinates that are consistent with the rendering
         currentEnemy.setPosition(enemyX + enemyWidth/2, enemyY + currentEnemy.getHeight()/2);

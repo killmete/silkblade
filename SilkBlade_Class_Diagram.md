@@ -29,6 +29,49 @@ classDiagram
     Screen <|-- OptionsScreen
     Screen <|-- GameOverScreen
     Screen <|-- CreditsScreen
+    Screen <|-- MainNavigationScreen
+    
+    %% Screen classes with their key properties
+    class ScreenManager {
+        -currentScreen Screen
+        +setCurrentScreen(Screen) void
+        +getCurrentScreen() Screen
+    }
+    
+    class MainMenuScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -batch SpriteBatch
+        -font BitmapFont
+        -titleTexture Texture
+        -selectSound Sound
+        -selectedIndex int
+        -inputEnabled boolean
+        +render(float) void
+        +handleInput() void
+        +processMenuSelection(int) void
+    }
+    
+    class CombatScene {
+        -player Player
+        -currentEnemy Enemy
+        -bullets Array~Bullet~
+        -playerTurn boolean
+        -enemyTurn boolean
+        -inCombat boolean
+        -batch SpriteBatch
+        -font BitmapFont
+        -background Texture
+        -camera OrthographicCamera
+        -viewport FitViewport
+        -soundEffect Sound
+        +startCombat() void
+        +spawnBullet() void
+        +updateBullets(float) void
+        +handleCollisions() void
+        +render(float) void
+    }
     
     %% Entity System - Enemies
     class Enemy {
@@ -40,12 +83,26 @@ classDiagram
         +damage(int, boolean) void
         +isDefeated() boolean
         +getTexture() Texture
+        +getWidth() float
+        +getHeight() float
         +draw(SpriteBatch, float, float) void
-        +generateAttack(float, float, float, float) List
+        +update(float) void
+        +generateAttack(float, float, float, float) List~Bullet~
+        +getAttackDamage() int
+        +getAttackInterval() float
+        +getArenaWidth() float
+        +getArenaHeight() float
         +getCurrentPattern() EnemyAttackPattern
+        +isTurnActive() boolean
+        +startTurn() void
+        +endTurn() void
         +getEncounterDialogue() String
+        +getAttackDialogue() String
+        +getDefeatDialogue() String
+        +getVictoryDialogue() String
         +getExpReward() int
         +getGoldReward() int
+        +updatePlayerPosition(float, float) void
     }
     
     class AbstractEnemy {
@@ -53,6 +110,10 @@ classDiagram
         #maxHP int
         #currentHP int
         #texture Texture
+        #width float
+        #height float
+        #turnActive boolean
+        #primaryColor Color
         #arenaWidth float
         #arenaHeight float
         #attackInterval float
@@ -61,6 +122,9 @@ classDiagram
         #patternManager EnemyAttackPatternManager
         #currentPattern EnemyAttackPattern
         +scaleToPlayerLevel(int) void
+        +damage(int, boolean) void
+        +generateAttack(float, float, float, float) List~Bullet~
+        #onBulletsSpawned() void
     }
     
     Enemy <|.. AbstractEnemy
@@ -77,27 +141,52 @@ classDiagram
     
     %% Player System
     class Player {
+        -name String
         -level int
+        -exp int
         -maxHP int
         -currentHP int
         -maxMP int
-        -currentMP int
+        -mp int
         -attack int
         -defense int
-        -experiencePoints int
-        -inventory List
-        -skills Map
+        -critRate float
+        -unlockedSkills boolean[]
+        -currentSkill SkillType
+        -inventory Inventory
+        -buffManager BuffManager
+        -currentStage int
+        -gold int
+        +gainExp(int) boolean
         +levelUp() void
-        +addItem(Item) void
-        +useItem(Item) void
+        +takeDamage(int) void
+        +heal(int) void
+        +useItem(Item) boolean
         +saveToFile() void
         +loadFromFile() Player
+        +isSkillUnlocked(SkillType) boolean
+        +unlockSkill(SkillType) void
+        +getSkillMPCost(SkillType) int
+        +createSnapshot() Player
+        +restoreFromSnapshot(Player) void
+    }
+    
+    class SkillType {
+        <<enumeration>>
+        BASIC
+        SKILL1
+        SKILL2
+        SKILL3
+        SKILL4
+        SKILL5
+        SKILL6
+        +getDisplayName() String
     }
     
     %% Attack Pattern System
     class EnemyAttackPattern {
         <<interface>>
-        +generateBullets(Enemy, float, float, float, float) List
+        +generateBullets(Enemy, float, float, float, float) List~Bullet~
         +getPatternName() String
         +getConfig() AttackPatternConfig
     }
@@ -114,10 +203,14 @@ classDiagram
         -usesCustomColors boolean
         -patternName String
         -bulletSize float
+        -attackInterval float
+        +getAttackInterval() float
+        +getArenaWidth() float
+        +getArenaHeight() float
     }
     
     class EnemyAttackPatternManager {
-        -patterns List
+        -patterns List~EnemyAttackPattern~
         +addPattern(EnemyAttackPattern) void
         +selectRandomPattern() EnemyAttackPattern
     }
@@ -141,23 +234,6 @@ classDiagram
         +getHitbox() Rectangle
     }
     
-    class CombatScene {
-        -player Player
-        -currentEnemy Enemy
-        -bullets Array
-        -playerTurn boolean
-        -enemyTurn boolean
-        -inCombat boolean
-        +startCombat() void
-        +spawnBullet() void
-        +updateBullets(float) void
-        +decreaseHP(int) void
-    }
-    
-    CombatScene --> Player
-    CombatScene --> Enemy
-    CombatScene --> Bullet
-    
     %% Item System
     class Item {
         <<interface>>
@@ -169,42 +245,72 @@ classDiagram
     }
     
     class ConsumableItem {
+        -name String
+        -description String
+        -value int
+        -texture Texture
         -healAmount int
         -manaAmount int
-        -statBoosts Map
+        -quantity int
         +use(Player) void
+        +increaseQuantity(int) boolean
+        +decreaseQuantity(int) boolean
+        +getQuantity() int
+        +clone() ConsumableItem
     }
     
     class Equipment {
-        -equipmentSlot Slot
+        -name String
+        -description String
+        -value int
+        -texture Texture
+        -type EquipmentType
         -statBonuses Map
         -percentBonuses Map
-        +getSlot() Slot
+        -thornDamage float
+        -hasDeathDefiance boolean
+        -hasFreeSkillCast boolean
+        +getType() EquipmentType
         +getStatBonus(StatType) int
         +getPercentBonus(StatType) float
+        +getThornDamage() float
+        +hasDeathDefiance() boolean
+        +hasFreeSkillCast() boolean
     }
     
     class ItemDatabase {
         -instance ItemDatabase
-        -items Map
+        -equipmentDatabase ObjectMap~String,Equipment~
+        -consumableDatabase ObjectMap~String,ConsumableItem~
         +getInstance() ItemDatabase
-        +getItemById(String) Item
-        +getAllItems() List
-        +getItemsByType(ItemType) List
+        +getEquipmentById(String) Equipment
+        +getConsumableById(String) ConsumableItem
+        +getAllEquipment() Array~Equipment~
+        +getAllConsumables() Array~ConsumableItem~
     }
     
     class Inventory {
-        -items List
-        -equippedItems Map
-        +addItem(Item) void
-        +removeItem(Item) void
-        +useItem(Item, Player) void
-        +equipItem(Equipment) void
+        -equippedItems Array~Equipment~
+        -inventoryItems Array~Equipment~
+        -storageItems Array~Equipment~
+        -consumableItems Array~ConsumableItem~
+        -combatItems Array~ConsumableItem~
+        +equipItem(Equipment) Equipment
+        +unequipItem(EquipmentType) boolean
+        +addToInventory(Equipment) boolean
+        +addConsumableItem(ConsumableItem) boolean
+        +useConsumableItem(ConsumableItem) boolean
         +getTotalAttackBonus() int
         +getTotalDefenseBonus() int
+        +getTotalHPBonus() int
+        +getTotalMPBonus() int
+        +getTotalCritBonus() float
+        +getTotalThornDamage() float
+        +hasDeathDefiance() boolean
+        +hasFreeSkillCast() boolean
     }
     
-    class EquipmentSlot {
+    class EquipmentType {
         <<enumeration>>
         WEAPON
         ARMOR
@@ -215,45 +321,49 @@ classDiagram
     Item <|.. Equipment
     ItemDatabase --> Item
     Player --> Inventory
+    Player --> SkillType
     Inventory --> Item
-    Inventory --> EquipmentSlot
-    Equipment --> EquipmentSlot
+    Inventory --> EquipmentType
+    Equipment --> EquipmentType
     
     %% Buff System
     class BuffManager {
         -player Player
-        -statBuffs Map
-        -buffDurations Map
+        -activeBuffs Array~StatBuff~
         +addBuff(StatType, int, int) void
         +updateBuffs(float) void
         +getAttackBuff() int
         +getDefenseBuff() int
         +getCritRateBuff() float
+        +getActiveBuffs() Array~StatBuff~
     }
     
     class StatType {
         <<enumeration>>
         ATTACK
         DEFENSE
+        HP
+        MP
         CRIT_RATE
     }
     
-    BuffManager --> StatType
-    Player --> BuffManager
-    
-    %% Skill System
-    class SkillType {
-        <<enumeration>>
-        BASIC
-        SKILL1
-        SKILL2
-        SKILL3
-        SKILL4
-        SKILL5
-        SKILL6
+    class StatBuff {
+        -type StatType
+        -amount int
+        -remainingTurns int
+        +getType() StatType
+        +getAmount() int
+        +getRemainingTurns() int
     }
     
-    Player --> SkillType
+    BuffManager --> StatType
+    BuffManager --> StatBuff
+    Player --> BuffManager
+    
+    %% Display connections
+    CombatScene --> Player
+    CombatScene --> Enemy
+    CombatScene --> Bullet
 ```
 
 ## Key Relationships
