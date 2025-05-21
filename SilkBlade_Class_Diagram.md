@@ -777,7 +777,7 @@ classDiagram
     Player --> Inventory
     Player --> SkillType
     Player --> BuffManager
-    Player +-- DamageResult
+    Player *-- DamageResult
     Inventory --> Item
     Inventory --> EquipmentType
     Equipment --> EquipmentType
