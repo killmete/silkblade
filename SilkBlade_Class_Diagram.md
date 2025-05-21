@@ -13,25 +13,36 @@ The following diagram illustrates the key classes and their relationships in the
 ```mermaid
 classDiagram
     %% Core Game Classes
-    Game <|-- Main
-    Main --> ScreenManager
-    Main --> ItemDatabase
+    Game <|-- Main : extends
+    Main --> ScreenManager : uses
+    Main --> ItemDatabase : initializes
     
     %% Screen Management
-    ScreenManager --> Screen
-    Screen <|-- MainMenuScreen
-    Screen <|-- CombatScene
-    Screen <|-- InventoryScreen
-    Screen <|-- ShopScreen
-    Screen <|-- StageSelectionScreen
-    Screen <|-- SaveFileSelectionScreen
-    Screen <|-- CharacterCreationScreen
-    Screen <|-- OptionsScreen
-    Screen <|-- GameOverScreen
-    Screen <|-- CreditsScreen
-    Screen <|-- MainNavigationScreen
+    ScreenManager --> Screen : manages
+    Screen <|-- MainMenuScreen : implements
+    Screen <|-- CombatScene : implements
+    Screen <|-- InventoryScreen : implements
+    Screen <|-- ShopScreen : implements
+    Screen <|-- StageSelectionScreen : implements
+    Screen <|-- SaveFileSelectionScreen : implements
+    Screen <|-- CharacterCreationScreen : implements
+    Screen <|-- OptionsScreen : implements
+    Screen <|-- GameOverScreen : implements
+    Screen <|-- CreditsScreen : implements
+    Screen <|-- MainNavigationScreen : implements
     
     %% Screen classes with their key properties
+    class Screen {
+        <<interface>>
+        +render(float) void
+        +resize(int, int) void
+        +show() void
+        +hide() void
+        +pause() void
+        +resume() void
+        +dispose() void
+    }
+    
     class ScreenManager {
         -currentScreen Screen
         +setCurrentScreen(Screen) void
@@ -327,17 +338,17 @@ classDiagram
         #onBulletsSpawned() void
     }
     
-    Enemy <|.. AbstractEnemy
-    AbstractEnemy <|-- SilkCicada
-    AbstractEnemy <|-- SilkWeaver
-    AbstractEnemy <|-- SilkWraith
-    AbstractEnemy <|-- SilkGuardian
-    AbstractEnemy <|-- SilkRevenant
-    AbstractEnemy <|-- GoldenCocoon
-    AbstractEnemy <|-- SpiritOfTheLoom
-    AbstractEnemy <|-- Threadmancer
-    AbstractEnemy <|-- CrimsonSericulture
-    AbstractEnemy <|-- HundredSilkOgre
+    Enemy <|.. AbstractEnemy : implements
+    AbstractEnemy <|-- SilkCicada : extends
+    AbstractEnemy <|-- SilkWeaver : extends
+    AbstractEnemy <|-- SilkWraith : extends
+    AbstractEnemy <|-- SilkGuardian : extends
+    AbstractEnemy <|-- SilkRevenant : extends
+    AbstractEnemy <|-- GoldenCocoon : extends
+    AbstractEnemy <|-- SpiritOfTheLoom : extends
+    AbstractEnemy <|-- Threadmancer : extends
+    AbstractEnemy <|-- CrimsonSericulture : extends
+    AbstractEnemy <|-- HundredSilkOgre : extends
     
     class SilkCicada {
         -player Player
@@ -669,9 +680,9 @@ classDiagram
         +selectRandomPattern() EnemyAttackPattern
     }
     
-    EnemyAttackPattern --> AttackPatternConfig
-    EnemyAttackPatternManager --> EnemyAttackPattern
-    AbstractEnemy --> EnemyAttackPatternManager
+    EnemyAttackPattern --> AttackPatternConfig : uses
+    EnemyAttackPatternManager --> EnemyAttackPattern : manages
+    AbstractEnemy --> EnemyAttackPatternManager : uses
     
     %% Combat System
     class Bullet {
@@ -771,16 +782,16 @@ classDiagram
         ACCESSORY
     }
     
-    Item <|.. ConsumableItem
-    Item <|.. Equipment
-    ItemDatabase --> Item
-    Player --> Inventory
-    Player --> SkillType
-    Player --> BuffManager
-    Player *-- DamageResult
-    Inventory --> Item
-    Inventory --> EquipmentType
-    Equipment --> EquipmentType
+    Item <|.. ConsumableItem : implements
+    Item <|.. Equipment : implements
+    ItemDatabase --> Item : manages
+    Player --> Inventory : has
+    Player --> SkillType : uses
+    Player --> BuffManager : has
+    Player *-- DamageResult : creates
+    Inventory --> Item : contains
+    Inventory --> EquipmentType : uses
+    Equipment --> EquipmentType : has
     
     %% Buff System
     class BuffManager {
@@ -812,14 +823,14 @@ classDiagram
         +getRemainingTurns() int
     }
     
-    BuffManager --> StatType
-    BuffManager --> StatBuff
-    Player --> BuffManager
+    BuffManager --> StatType : uses
+    BuffManager --> StatBuff : manages
+    Player --> BuffManager : has
     
     %% Display connections
-    CombatScene --> Player
-    CombatScene --> Enemy
-    CombatScene --> Bullet
+    CombatScene --> Player : uses
+    CombatScene --> Enemy : controls
+    CombatScene --> Bullet : manages
 ```
 
 ## Key Relationships
@@ -859,6 +870,38 @@ classDiagram
 - `Equipment` implements permanent stat-boosting items
 - `ItemDatabase` provides centralized item management
 - `Inventory` handles the player's collection of items
+
+## Arrow Types and Their Meanings
+
+### Inheritance/Implementation (Class <|-- Class or Interface <|.. Class)
+- Represented by: `<|--` or `<|..`
+- Description: Indicates inheritance (extends) or implementation (implements) relationships
+- Examples: 
+  - `Game <|-- Main` means Main extends Game
+  - `Enemy <|.. AbstractEnemy` means AbstractEnemy implements Enemy interface
+  - `Screen <|-- MainMenuScreen` means MainMenuScreen extends Screen
+
+### Association (Class --> Class)
+- Represented by: `-->`
+- Description: Represents a relationship where one class uses another class
+- Examples: 
+  - `Main --> ScreenManager` means Main uses ScreenManager
+  - `EnemyAttackPattern --> AttackPatternConfig` means EnemyAttackPattern uses AttackPatternConfig
+  - `AbstractEnemy --> EnemyAttackPatternManager` means AbstractEnemy uses EnemyAttackPatternManager
+
+### Composition (Class *-- Class)
+- Represented by: `*--`
+- Description: Represents a strong "has-a" relationship where the child cannot exist without the parent
+- Examples: 
+  - `Player *-- DamageResult` means Player creates and owns DamageResult objects
+  - Child objects are dependent on the parent object and are typically created and destroyed with the parent
+
+### Usage/Reference (Class --> Class)
+- Represented by: `-->`
+- Description: Represents an object using or referencing another object
+- Examples:
+  - `ItemDatabase --> Item` means ItemDatabase references Item interface
+  - `BuffManager --> StatType` means BuffManager uses the StatType enum
 
 ## Core Classes and Interfaces
 

@@ -190,7 +190,7 @@ public class CharacterCreationScreen implements Screen, InputProcessor {
                 screenHeight - DisplayConfig.INPUT_FIELD_Y);
 
         // Draw confirm button
-        if (characterName.length() > 0) {
+        if (isNameValid()) {
             font.setColor(DisplayConfig.BUTTON_COLOR);
             font.draw(batch, MenuConfig.CONFIRM_BUTTON,
                     screenWidth * DisplayConfig.TEXT_X_POSITION,
@@ -204,10 +204,12 @@ public class CharacterCreationScreen implements Screen, InputProcessor {
      * Create new character and save file
      */
     private void createCharacter() {
-        if (characterName.length() > 0) {
+        if (isNameValid()) {
             try {
+                // Trim whitespace from the name before creating the player
+                String trimmedName = characterName.toString().trim();
                 // Create new player with the given name
-                Player player = new Player(characterName.toString());
+                Player player = new Player(trimmedName);
                 
                 // Add gold for testing shop
                 player.setGold(10000);
@@ -215,7 +217,7 @@ public class CharacterCreationScreen implements Screen, InputProcessor {
                 // Save the player data
                 player.saveToFile();
 
-                GameLogger.logInfo("Created new character: " + characterName);
+                GameLogger.logInfo("Created new character: " + trimmedName);
 
                 // Navigate to the stage selection screen
                 inputEnabled = false;
@@ -223,7 +225,7 @@ public class CharacterCreationScreen implements Screen, InputProcessor {
                     game,
                     this,
                     new MainNavigationScreen(game),
-                    ScreenTransition.TransitionType.CROSS_FADE
+                    ScreenTransition.TransitionType.CROSS_FADE  
                 ));
             } catch (Exception e) {
                 GameLogger.logError("Failed to create character", e);
@@ -239,7 +241,7 @@ public class CharacterCreationScreen implements Screen, InputProcessor {
         if (!inputEnabled) return false;
 
         if (keycode == Input.Keys.ENTER) {
-            if (characterName.length() > 0) {
+            if (isNameValid()) {
                 confirmed = true;
                 selectSound.play();
             }
@@ -363,4 +365,8 @@ public class CharacterCreationScreen implements Screen, InputProcessor {
     // Unused Screen interface methods
     @Override public void pause() {}
     @Override public void resume() {}
+
+    private boolean isNameValid() {
+        return characterName.length() > 0 && characterName.toString().trim().length() > 0;
+    }
 }
