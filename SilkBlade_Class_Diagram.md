@@ -51,6 +51,8 @@ classDiagram
         +render(float) void
         +handleInput() void
         +processMenuSelection(int) void
+        +startGame() void
+        +openOptions() void
     }
     
     class CombatScene {
@@ -71,6 +73,204 @@ classDiagram
         +updateBullets(float) void
         +handleCollisions() void
         +render(float) void
+    }
+    
+    class InventoryScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -batch SpriteBatch
+        -font BitmapFont
+        -player Player
+        -inventory Inventory
+        -selectSound Sound
+        -equipSound Sound
+        -useSound Sound
+        -isLeftSide boolean
+        -selectedIndexLeft int
+        -selectedIndexRight int
+        -topItemIndex int
+        -examiningItem boolean
+        -shapeRenderer ShapeRenderer
+        +render(float) void
+        +drawEquippedItems(float) void
+        +drawInventoryItems(float) void
+        +handleInput() void
+        +equipItem(Equipment) void
+        +useItem(ConsumableItem) void
+    }
+    
+    class ShopScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -batch SpriteBatch
+        -font BitmapFont
+        -player Player
+        -inventory Inventory
+        -itemDB ItemDatabase
+        -selectSound Sound
+        -buySound Sound
+        -errorSound Sound
+        -selectedIndex int
+        -selectedCategory int
+        -topItemIndex int
+        -examiningItem boolean
+        +render(float) void
+        +handleInput() void
+        +buyItem(Item) void
+        +drawShopItems(float) void
+    }
+    
+    class StageSelectionScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -batch SpriteBatch
+        -font BitmapFont
+        -player Player
+        -selectSound Sound
+        -selectedStage int
+        -unlockedStages int
+        -scrollOffset int
+        -inputEnabled boolean
+        -static currentChallengingStage int
+        +render(float) void
+        +drawStagesGrid(float, float) void
+        +handleInput() void
+        +moveSelection(int, int) void
+        +startChallengeForStage(int) void
+        +static getCurrentChallengingStage() int
+        +static setCurrentChallengingStage(int) void
+    }
+    
+    class SaveFileSelectionScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -batch SpriteBatch
+        -font BitmapFont
+        -selectSound Sound
+        -selectedIndex int
+        -inputEnabled boolean
+        -saveFiles Array~SaveFileInfo~
+        -saveFolderPath String
+        +render(float) void
+        +loadSaveFiles() void
+        +handleInput() void
+        +createNewSave() void
+        +loadSaveFile(String) void
+    }
+    
+    class CharacterCreationScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -batch SpriteBatch
+        -font BitmapFont
+        -selectSound Sound
+        -typeSound Sound
+        -characterName StringBuilder
+        -inputEnabled boolean
+        -confirmed boolean
+        -cursorBlinkTimer float
+        -cursorVisible boolean
+        +render(float) void
+        +createCharacter() void
+        +keyDown(int) boolean
+        +keyTyped(char) boolean
+    }
+    
+    class OptionsScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -batch SpriteBatch
+        -font BitmapFont
+        -selectSound Sound
+        -resolutions Array~Resolution~
+        -settings GameSettings
+        -selectedIndex int
+        -changing boolean
+        -inputEnabled boolean
+        +render(float) void
+        +drawOptions() void
+        +handleInput() void
+        +saveSettings() void
+        +loadSettings() GameSettings
+        +static getResolutionByIndex(int) int[]
+    }
+    
+    class GameOverScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -batch SpriteBatch
+        -font BitmapFont
+        -heartTexture Texture
+        -whiteTexture Texture
+        -explosionAtlas TextureAtlas
+        -explosionAnimation Animation
+        -explosionSound Sound
+        -selectSound Sound
+        -youDiedSound Sound
+        -deathX float
+        -deathY float
+        -selectedOption int
+        -options String[]
+        -currentEnemy Enemy
+        -showGameOver boolean
+        -showOptions boolean
+        -explosionStarted boolean
+        +render(float) void
+        +updateAnimationState(float) void
+        +handleInput() void
+        +selectOption(int) void
+        +retry() void
+        +giveUp() void
+    }
+    
+    class CreditsScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -spriteBatch SpriteBatch
+        -font BitmapFont
+        -typingSound Sound
+        -titleTexture Texture
+        -backgroundMusic Music
+        -state CreditsState
+        -narrativeText String
+        -currentDisplayText StringBuilder
+        -credits Array~CreditLine~
+        -scrollPosition float
+        +render(float) void
+        +updateNarrativeTyping(float) void
+        +updateFade(float, boolean) void
+        +updateScrolling(float) void
+        +renderNarrative() void
+        +renderTitleImage() void
+        +renderScrollingCredits() void
+    }
+    
+    class MainNavigationScreen {
+        -game Game
+        -viewport FitViewport
+        -camera OrthographicCamera
+        -batch SpriteBatch
+        -font BitmapFont
+        -selectSound Sound
+        -selectedIndex int
+        -inputEnabled boolean
+        +render(float) void
+        +drawMenu() void
+        +handleInput() void
+        +moveSelection(int) void
+        +selectOption(int) void
+        +goToStageSelection() void
+        +goToInventory() void
+        +goToShop() void
+        +goBack() void
     }
     
     %% Entity System - Enemies
@@ -139,6 +339,238 @@ classDiagram
     AbstractEnemy <|-- CrimsonSericulture
     AbstractEnemy <|-- HundredSilkOgre
     
+    class SilkCicada {
+        -player Player
+        -stage int
+        -static BASE_HP int
+        -static BASE_ATTACK int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static COMBAT_BACKGROUND String
+        -static COMBAT_MUSIC String
+        +SilkCicada(int) 
+        -initializeEnemy() void
+        -scaleToStage(int) void
+        -updateVisualTint() void
+        -initializeDialogues() void
+        +draw(SpriteBatch, float, float) void
+        +getCombatBackground() String
+        +getCombatMusic() String
+        +getStage() int
+    }
+    
+    class SilkGuardian {
+        -player Player
+        -inPhase2 boolean
+        -phaseTransitionTimer float
+        -rainbowEffectTimer float
+        -static BASE_HP int
+        -static BASE_ATTACK int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static PHASE_2_HP_THRESHOLD float
+        -static PHASE_TRANSITION_DURATION float
+        -static COMBAT_BACKGROUND String
+        -static COMBAT_MUSIC String
+        -static RAINBOW_CYCLE_SPEED float
+        +SilkGuardian()
+        -initializeGuardian() void
+        +update(float) void
+        -enterPhase2() void
+        -updateRainbowColor() void
+        -initializeDialogues() void
+        +draw(SpriteBatch, float, float) void
+        +isInPhase2() boolean
+        +isPhaseTransitioning() boolean
+        +getCombatBackground() String
+        +getCombatMusic() String
+    }
+    
+    class SpiritOfTheLoom {
+        -player Player
+        -stage int
+        -static BASE_HP int
+        -static BASE_ATTACK int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static COMBAT_BACKGROUND String
+        -static COMBAT_MUSIC String
+        +SpiritOfTheLoom(int)
+        -initializeEnemy() void
+        -scaleToStage(int) void
+        -initializeDialogues() void
+        +draw(SpriteBatch, float, float) void
+        +getCombatBackground() String
+        +getCombatMusic() String
+        +getStage() int
+    }
+    
+    class SilkWeaver {
+        -player Player
+        -static BASE_HP int
+        -static BASE_ATTACK int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static COMBAT_BACKGROUND String
+        -static COMBAT_MUSIC String
+        +SilkWeaver()
+        -initializeEnemy() void
+        -initializeDialogues() void
+        +getCombatBackground() String
+        +getCombatMusic() String
+    }
+    
+    class SilkWraith {
+        -player Player
+        -static BASE_HP int
+        -static BASE_ATTACK int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static COMBAT_BACKGROUND String
+        -static COMBAT_MUSIC String
+        -teleportTimer float
+        -teleportCooldown float
+        -teleportDuration float
+        +SilkWraith()
+        -initializeEnemy() void
+        -initializeDialogues() void
+        +update(float) void
+        -performTeleport() void
+        +getCombatBackground() String
+        +getCombatMusic() String
+    }
+    
+    class GoldenCocoon {
+        -player Player
+        -pulseTimer float
+        -glowIntensity float
+        -currentPatternIndex int
+        -static BASE_HP int
+        -static BASE_ATTACK int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static PULSE_SPEED float
+        -static MIN_GLOW float
+        -static MAX_GLOW float
+        -static COMBAT_BACKGROUND String
+        -static COMBAT_MUSIC String
+        +GoldenCocoon()
+        -initializeCocoon() void
+        +update(float) void
+        -initializeDialogues() void
+        +draw(SpriteBatch, float, float) void
+        -drawGoldenGlow(SpriteBatch, float, float) void
+        +getCombatBackground() String
+        +getCombatMusic() String
+    }
+    
+    class SilkRevenant {
+        -player Player
+        -isEnraged boolean
+        -static BASE_HP int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static COMBAT_MUSIC String
+        -static COMBAT_BACKGROUND String
+        -rainbowTimer float
+        -rainbowSpeed float
+        -rainbowHue float
+        -rainbowSaturation float
+        -rainbowValue float
+        +SilkRevenant()
+        -initializeEnemy() void
+        -initializeDialogues() void
+        +update(float) void
+        -setHSVColor(float, float, float) void
+        +draw(SpriteBatch, float, float) void
+    }
+    
+    class Threadmancer {
+        -player Player
+        -threadAnimationTimer float
+        -threadPulsation float
+        -threadOpacity float
+        -currentThreadColor int
+        -targetThreadColor int
+        -colorTransitionProgress float
+        -static BASE_HP int
+        -static BASE_ATTACK int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static THREAD_ANIMATION_SPEED float
+        -static COLOR_TRANSITION_SPEED float
+        -static THREAD_COLORS Color[]
+        -static COMBAT_BACKGROUND String
+        -static COMBAT_MUSIC String
+        +Threadmancer()
+        -initializeThreadmancer() void
+        +update(float) void
+        -initializeDialogues() void
+        +draw(SpriteBatch, float, float) void
+        -drawThreadEffects(SpriteBatch, float, float) void
+        +getCombatBackground() String
+        +getCombatMusic() String
+    }
+    
+    class CrimsonSericulture {
+        -player Player
+        -inSecondPhase boolean
+        -phaseTransitionTimer float
+        -rainbowTimer float
+        -shouldHealAfterTurn boolean
+        -static BASE_HP int
+        -static BASE_ATTACK int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static PHASE_2_HP_THRESHOLD float
+        -static HEAL_PERCENT float
+        -static COMBAT_BACKGROUND String
+        -static COMBAT_MUSIC String
+        -pulseScale float
+        -pulseDirection float
+        +CrimsonSericulture()
+        -initializeSericulture() void
+        -initializeDialogues() void
+        +update(float) void
+        -checkPhaseTransition() void
+        -startPhaseTransition() void
+        -finalizePhaseTransition() void
+        -updateRainbowEffect(float) void
+        -updatePulseEffect(float) void
+        +draw(SpriteBatch, float, float) void
+        -drawWithEffects(SpriteBatch, float, float) void
+        +endTurn() void
+        +getCombatBackground() String
+        +getCombatMusic() String
+    }
+    
+    class HundredSilkOgre {
+        -player Player
+        -stage int
+        -static BASE_HP int
+        -static BASE_ATTACK int
+        -static BASE_XP int
+        -static BASE_GOLD int
+        -static COMBAT_BACKGROUND String
+        -static COMBAT_MUSIC String
+        -colorShiftTimer float
+        -colorShiftSpeed float
+        -colorShiftPalette Color[]
+        -currentColorIndex int
+        -targetColorIndex int
+        -colorLerpProgress float
+        -static COLOR_TRANSITION_DURATION float
+        +HundredSilkOgre(int)
+        -initializeEnemy() void
+        -scaleToStage(int) void
+        -initializeDialogues() void
+        +update(float) void
+        +draw(SpriteBatch, float, float) void
+        +getCombatBackground() String
+        +getCombatMusic() String
+        +getStage() int
+    }
+    
     %% Player System
     class Player {
         -name String
@@ -161,14 +593,36 @@ classDiagram
         +levelUp() void
         +takeDamage(int) void
         +heal(int) void
+        +regenMP() void
+        +calculateDamage() DamageResult
+        +calculateSkillDamage(SkillType) DamageResult
+        +applySkillEffects(SkillType) void
         +useItem(Item) boolean
         +saveToFile() void
-        +loadFromFile() Player
+        +static loadFromFile() Player
         +isSkillUnlocked(SkillType) boolean
         +unlockSkill(SkillType) void
         +getSkillMPCost(SkillType) int
         +createSnapshot() Player
         +restoreFromSnapshot(Player) void
+        +getAttack() int
+        +getDefense() int
+        +getMaxHP() int
+        +getCurrentHP() int
+        +getMaxMP() int
+        +getCritRate() float
+        +getCurrentStage() int
+        +getGold() int
+        +setGold(int) void
+        +addGold(int) void
+    }
+    
+    class DamageResult {
+        +damage int
+        +isCritical boolean
+        +isDoubleAttack boolean
+        +DamageResult(int, boolean)
+        +DamageResult(int, boolean, boolean)
     }
     
     class SkillType {
@@ -322,6 +776,8 @@ classDiagram
     ItemDatabase --> Item
     Player --> Inventory
     Player --> SkillType
+    Player --> BuffManager
+    Player +-- DamageResult
     Inventory --> Item
     Inventory --> EquipmentType
     Equipment --> EquipmentType
